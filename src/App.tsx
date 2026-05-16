@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { emptyGrid, generateVariants, resizeGrid, type Grid } from './shape';
 import type { Split, SplitsResult } from './splits';
 import type { SplitsRequest, SplitsResponse } from './splits.worker';
@@ -27,15 +27,6 @@ function isValidGrid(g: unknown, n: number): g is Grid {
       (row) => Array.isArray(row) && row.length === n && (row as unknown[]).every((c) => typeof c === 'boolean'),
     )
   );
-}
-
-function useDebouncedValue<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = window.setTimeout(() => setDebounced(value), ms);
-    return () => window.clearTimeout(id);
-  }, [value, ms]);
-  return debounced;
 }
 
 function loadPersisted(): PersistedState | null {
@@ -198,18 +189,19 @@ export default function App() {
     setBoardGrid((prev) => resizeGrid(prev, clamped));
   };
   const clearBoard = () => setBoardGrid(emptyGrid(boardSize));
-  // Debounce heavy analyses so dragging to paint stays fluid. Variants are cheap
-  // and can stay live; selfFits and tile both walk the cell-set repeatedly.
-  const debouncedPiece = useDebouncedValue(pieceGrid, 180);
-  const debouncedBoard = useDebouncedValue(boardGrid, 180);
+  // Defer heavy analyses so dragging to paint stays fluid. Variants are cheap
+  // and can stay live; selfFits and tile both walk the cell-set repeatedly, so
+  // we let React schedule them at lower priority and catch up when idle.
+  const deferredPiece = useDeferredValue(pieceGrid);
+  const deferredBoard = useDeferredValue(boardGrid);
   const [tilingOpen, setTilingOpen] = useState(false);
   const tiling = useMemo(
-    () => (tilingOpen ? tileRegion(debouncedBoard, debouncedPiece) : null),
-    [tilingOpen, debouncedBoard, debouncedPiece],
+    () => (tilingOpen ? tileRegion(deferredBoard, deferredPiece) : null),
+    [tilingOpen, deferredBoard, deferredPiece],
   );
 
   const variants = useMemo(() => generateVariants(grid), [grid]);
-  const selfFits = useMemo(() => findSelfFits(debouncedPiece), [debouncedPiece]);
+  const selfFits = useMemo(() => findSelfFits(deferredPiece), [deferredPiece]);
   const { result: splitsResult, pending: splitsPending } = useSplits(grid);
   const [showAllSplits, setShowAllSplits] = useState(false);
   /** Number of distinct shared-edge tiers (e.g., "9 edges", "7 edges") to display. */
