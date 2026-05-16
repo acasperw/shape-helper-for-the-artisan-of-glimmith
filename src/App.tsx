@@ -236,7 +236,7 @@ export default function App() {
 
       <footer>
         <a
-          href="https://github.com/"
+          href="https://github.com/acasperw/shape-helper-for-the-artisan-of-glimmith/"
           target="_blank"
           rel="noreferrer"
         >Source on GitHub</a>
