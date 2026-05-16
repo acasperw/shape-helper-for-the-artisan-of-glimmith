@@ -3,35 +3,48 @@ import { emptyGrid, generateVariants, resizeGrid, type Grid } from './shape';
 import type { Split, SplitsResult } from './splits';
 import type { SplitsRequest, SplitsResponse } from './splits.worker';
 import { findSelfFits, type SelfFit } from './selfFit';
+import { tileRegion, type Placement } from './tile';
 
 const MIN_SIZE = 5;
 const MAX_SIZE = 20;
-const DEFAULT_SIZE = 10;
-const STORAGE_KEY = 'shape-helper:v1';
+const DEFAULT_SIZE = 6;
+const BOARD_MIN_SIZE = 5;
+const BOARD_MAX_SIZE = 15;
+const BOARD_DEFAULT_SIZE = 8;
+const STORAGE_KEY = 'shape-helper:v2';
 /** Wait this long after the last edit before kicking off split analysis. */
 const SPLITS_DEBOUNCE_MS = 400;
 
 type PaintMode = 'fill' | 'erase' | null;
 
-type PersistedState = { size: number; grid: Grid };
+type PersistedState = { size: number; grid: Grid; boardSize?: number; boardGrid?: Grid };
+
+function isValidGrid(g: unknown, n: number): g is Grid {
+  return (
+    Array.isArray(g) &&
+    g.length === n &&
+    (g as unknown[]).every(
+      (row) => Array.isArray(row) && row.length === n && (row as unknown[]).every((c) => typeof c === 'boolean'),
+    )
+  );
+}
 
 function loadPersisted(): PersistedState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedState;
-    if (
-      typeof parsed?.size !== 'number' ||
-      !Array.isArray(parsed?.grid) ||
-      parsed.grid.length !== parsed.size ||
-      !parsed.grid.every(
-        (row) => Array.isArray(row) && row.length === parsed.size && row.every((c) => typeof c === 'boolean'),
-      )
-    ) {
-      return null;
-    }
+    if (typeof parsed?.size !== 'number' || !isValidGrid(parsed.grid, parsed.size)) return null;
     const clamped = Math.max(MIN_SIZE, Math.min(MAX_SIZE, parsed.size));
     if (clamped !== parsed.size) return null;
+    if (
+      typeof parsed.boardSize !== 'number' ||
+      parsed.boardSize < BOARD_MIN_SIZE ||
+      parsed.boardSize > BOARD_MAX_SIZE ||
+      !isValidGrid(parsed.boardGrid, parsed.boardSize)
+    ) {
+      return { size: parsed.size, grid: parsed.grid };
+    }
     return parsed;
   } catch {
     return null;
@@ -40,8 +53,15 @@ function loadPersisted(): PersistedState | null {
 
 export default function App() {
   const initial = useMemo(() => loadPersisted(), []);
-  const [size, setSize] = useState(initial?.size ?? DEFAULT_SIZE);
-  const [grid, setGrid] = useState<Grid>(() => initial?.grid ?? emptyGrid(DEFAULT_SIZE));
+  const [pieceSize, setPieceSize] = useState(initial?.size ?? DEFAULT_SIZE);
+  const [pieceGrid, setPieceGrid] = useState<Grid>(() => initial?.grid ?? emptyGrid(DEFAULT_SIZE));
+  const [boardSize, setBoardSize] = useState(initial?.boardSize ?? BOARD_DEFAULT_SIZE);
+  const [boardGrid, setBoardGrid] = useState<Grid>(() => initial?.boardGrid ?? emptyGrid(BOARD_DEFAULT_SIZE));
+  // Aliases so the rest of the existing main-grid wiring (variants, self-fits, splits) keeps reading `grid`/`size`.
+  const size = pieceSize;
+  const setSize = setPieceSize;
+  const grid = pieceGrid;
+  const setGrid = setPieceGrid;
   const paintModeRef = useRef<PaintMode>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   // Roving-tabindex anchor: only this cell is in the tab order; arrow keys move it.
@@ -67,11 +87,14 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ size, grid }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ size: pieceSize, grid: pieceGrid, boardSize, boardGrid }),
+      );
     } catch {
       // ignore quota / disabled storage
     }
-  }, [size, grid]);
+  }, [pieceSize, pieceGrid, boardSize, boardGrid]);
 
   const setCell = useCallback((r: number, c: number, value: boolean) => {
     setGrid((prev) => {
@@ -155,6 +178,14 @@ export default function App() {
   };
 
   const clear = () => setGrid(emptyGrid(size));
+
+  const handleBoardSizeChange = (n: number) => {
+    const clamped = Math.max(BOARD_MIN_SIZE, Math.min(BOARD_MAX_SIZE, n));
+    setBoardSize(clamped);
+    setBoardGrid((prev) => resizeGrid(prev, clamped));
+  };
+  const clearBoard = () => setBoardGrid(emptyGrid(boardSize));
+  const tiling = useMemo(() => tileRegion(boardGrid, pieceGrid), [boardGrid, pieceGrid]);
 
   const variants = useMemo(() => generateVariants(grid), [grid]);
   const selfFits = useMemo(() => findSelfFits(grid), [grid]);
@@ -255,6 +286,47 @@ export default function App() {
             ))
           )}
         </div>
+      </section>
+
+      <section className="tiling" aria-labelledby="tiling-heading">
+        <details>
+          <summary>
+            <h2 id="tiling-heading">Tile a board with this piece</h2>
+            <span className="hint cheating-tag">Solver — finds one full tiling of a board you draw using the piece above</span>
+          </summary>
+          <p className="hint">
+            Draw a board below and we'll try to tile every filled cell of it
+            using only rotated and flipped copies of the piece you drew above.
+            Each placement gets its own color.
+          </p>
+
+          <div className="piece-controls">
+            <label>
+              Board grid:{' '}
+              <strong aria-live="polite">{boardSize}×{boardSize}</strong>
+              <input
+                type="range"
+                min={BOARD_MIN_SIZE}
+                max={BOARD_MAX_SIZE}
+                value={boardSize}
+                aria-valuetext={`${boardSize} by ${boardSize}`}
+                onChange={(e) => handleBoardSizeChange(Number(e.target.value))}
+              />
+            </label>
+            <button onClick={clearBoard} type="button">Clear board</button>
+          </div>
+
+          <div className="piece-and-result">
+            <div>
+              <h3 className="piece-heading">Board</h3>
+              <PieceGrid grid={boardGrid} setGrid={setBoardGrid} />
+            </div>
+            <div className="tiling-result">
+              <h3 className="piece-heading">Tiling</h3>
+              <TilingView grid={boardGrid} tiling={tiling} />
+            </div>
+          </div>
+        </details>
       </section>
 
       <section className="variants">
@@ -514,6 +586,140 @@ function SelfFitView({ fit }: { fit: SelfFit }) {
         <span className="dims">{fit.contactEdges} shared edge{fit.contactEdges === 1 ? '' : 's'}</span>
       </figcaption>
     </figure>
+  );
+}
+
+function PieceGrid({ grid, setGrid }: { grid: Grid; setGrid: React.Dispatch<React.SetStateAction<Grid>> }) {
+  const size = grid.length;
+  const paintModeRef = useRef<PaintMode>(null);
+  const setCell = useCallback(
+    (r: number, c: number, value: boolean) => {
+      setGrid((prev) => {
+        if (prev[r][c] === value) return prev;
+        const next = prev.map((row) => row.slice());
+        next[r][c] = value;
+        return next;
+      });
+    },
+    [setGrid],
+  );
+  const onDown = (r: number, c: number) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.target as Element).releasePointerCapture?.(e.pointerId);
+    const mode: PaintMode = grid[r][c] ? 'erase' : 'fill';
+    paintModeRef.current = mode;
+    setCell(r, c, mode === 'fill');
+  };
+  const onEnter = (r: number, c: number) => (e: React.PointerEvent) => {
+    if (paintModeRef.current === null) return;
+    if (e.buttons === 0) { paintModeRef.current = null; return; }
+    setCell(r, c, paintModeRef.current === 'fill');
+  };
+  const end = () => { paintModeRef.current = null; };
+  return (
+    <div
+      className="grid piece-grid"
+      role="grid"
+      aria-label={`Piece, ${size} by ${size}`}
+      style={{
+        ['--size' as string]: size,
+        ['--cols' as string]: size,
+        ['--rows' as string]: size,
+        gridTemplateColumns: `repeat(${size}, var(--piece-cell-size))`,
+        gridTemplateRows: `repeat(${size}, var(--piece-cell-size))`,
+      }}
+      onPointerUp={end}
+      onPointerLeave={end}
+    >
+      {grid.map((row, r) =>
+        row.map((cell, c) => (
+          <button
+            key={`${r}-${c}`}
+            type="button"
+            role="gridcell"
+            aria-pressed={cell}
+            aria-label={`Row ${r + 1}, column ${c + 1}, ${cell ? 'filled' : 'empty'}`}
+            className={`cell ${cell ? 'on' : ''}`}
+            style={cell ? edgeStyle(grid, r, c) : undefined}
+            onPointerDown={onDown(r, c)}
+            onPointerEnter={onEnter(r, c)}
+          />
+        )),
+      )}
+    </div>
+  );
+}
+
+function TilingView({ grid, tiling }: { grid: Grid; tiling: ReturnType<typeof tileRegion> }) {
+  // Cropped bounding box of the drawn board, so the result panel doesn't waste
+  // space on empty rows/cols.
+  let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < grid[r].length; c++) {
+      if (grid[r][c]) {
+        if (r < minR) minR = r; if (r > maxR) maxR = r;
+        if (c < minC) minC = c; if (c > maxC) maxC = c;
+      }
+    }
+  }
+
+  if (tiling.emptyBoard) return <p className="hint">Draw a board below to start tiling.</p>;
+  if (tiling.emptyPiece) return <p className="hint">Draw a piece on the main grid above first.</p>;
+  if (tiling.tooLarge) return <p className="hint">Board or piece is too large for tiling search.</p>;
+  if (tiling.disconnectedPiece) return <p className="hint">The piece must be a single connected shape.</p>;
+  if (tiling.sizeMismatch) {
+    return <p className="hint">Board cell count isn't a multiple of the piece cell count — no exact tiling possible.</p>;
+  }
+  if (tiling.aborted) return <p className="hint">Search exceeded its iteration budget.</p>;
+  if (!tiling.solution) return <p className="hint">No tiling of this board by that piece exists.</p>;
+
+  const rows = maxR - minR + 1;
+  const cols = maxC - minC + 1;
+  // Map every covered cell to the index of its placement, so we can color it.
+  const tileIdx: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
+  // Per-placement boolean grid for edge styling (so each piece keeps its own outline).
+  const placementGrids: Grid[] = tiling.solution.map(() =>
+    Array.from({ length: rows }, () => new Array(cols).fill(false) as boolean[]),
+  );
+  tiling.solution.forEach((placement: Placement, idx) => {
+    for (const { r, c } of placement) {
+      const rr = r - minR;
+      const cc = c - minC;
+      tileIdx[rr][cc] = idx;
+      placementGrids[idx][rr][cc] = true;
+    }
+  });
+
+  return (
+    <div
+      className="mini-grid tiling-grid"
+      role="img"
+      aria-label={`Tiling using ${tiling.solution.length} piece copies`}
+      style={{
+        ['--cols' as string]: cols,
+        ['--rows' as string]: rows,
+        gridTemplateColumns: `repeat(${cols}, var(--cell-size))`,
+        gridTemplateRows: `repeat(${rows}, var(--cell-size))`,
+      }}
+    >
+      {Array.from({ length: rows }).flatMap((_, r) =>
+        Array.from({ length: cols }).map((_, c) => {
+          const idx = tileIdx[r][c];
+          if (idx < 0) {
+            return <div key={`${r}-${c}`} aria-hidden="true" className="cell" />;
+          }
+          const colorClass = `tile-${idx % 8}`;
+          return (
+            <div
+              key={`${r}-${c}`}
+              aria-hidden="true"
+              className={`cell on ${colorClass}`}
+              style={edgeStyle(placementGrids[idx], r, c)}
+            />
+          );
+        }),
+      )}
+    </div>
   );
 }
 

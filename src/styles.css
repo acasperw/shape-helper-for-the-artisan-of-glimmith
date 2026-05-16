@@ -1,6 +1,7 @@
 :root {
   --cell-size: 36px;
   --mini-cell-size: 22px;
+  --piece-cell-size: 28px;
 
   /* Parchment palette inspired by The Artisan of Glimmith */
   --bg: #c9a36b;
@@ -337,7 +338,8 @@ figcaption {
 /* ---------- Splits ---------- */
 
 .splits,
-.self-fits {
+.self-fits,
+.tiling {
   background:
     radial-gradient(ellipse at 30% 20%, rgba(255, 250, 230, 0.6), transparent 60%),
     radial-gradient(ellipse at 80% 90%, rgba(160, 120, 70, 0.18), transparent 60%),
@@ -377,6 +379,94 @@ figcaption {
   --glass-red-2: #2f6fb0;
   --glass-red-3: #1a4a85;
   --glass-red-4: #8fc6ea;
+}
+
+/* ---------- Tiling section ---------- */
+.tiling > details > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.tiling > details > summary::-webkit-details-marker { display: none; }
+.tiling > details > summary::before {
+  content: '▶';
+  display: inline-block;
+  transition: transform 120ms ease;
+  color: var(--muted);
+  font-size: 0.8em;
+}
+.tiling > details[open] > summary::before { transform: rotate(90deg); }
+.tiling > details > summary h2 {
+  margin: 0;
+  display: inline;
+}
+.cheating-tag {
+  font-style: italic;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.piece-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 12px;
+  color: var(--ink-soft);
+}
+.piece-controls input[type="range"] { vertical-align: middle; margin-left: 6px; }
+
+.piece-and-result {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .piece-and-result { grid-template-columns: 1fr; }
+}
+.piece-heading {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.piece-grid .cell { width: var(--piece-cell-size); height: var(--piece-cell-size); }
+.tiling-grid { --cell-size: var(--piece-cell-size); }
+
+/* Placement palette — each tile-N override of the red stained-glass vars. */
+.cell.on.tile-0 { /* red (default) */ }
+.cell.on.tile-1 {
+  --glass-red-1: #6fb1e3; --glass-red-2: #2f6fb0;
+  --glass-red-3: #1a4a85; --glass-red-4: #8fc6ea;
+}
+.cell.on.tile-2 {
+  --glass-red-1: #8ed18a; --glass-red-2: #3e8b3d;
+  --glass-red-3: #225d22; --glass-red-4: #a8dca0;
+}
+.cell.on.tile-3 {
+  --glass-red-1: #f5d27a; --glass-red-2: #c79a2b;
+  --glass-red-3: #8a6a16; --glass-red-4: #f2e0a4;
+}
+.cell.on.tile-4 {
+  --glass-red-1: #c79ade; --glass-red-2: #7a3fa6;
+  --glass-red-3: #4d2270; --glass-red-4: #d4b3e3;
+}
+.cell.on.tile-5 {
+  --glass-red-1: #7ed1c4; --glass-red-2: #2f8a7b;
+  --glass-red-3: #1c5a51; --glass-red-4: #a4dcd2;
+}
+.cell.on.tile-6 {
+  --glass-red-1: #f0a96b; --glass-red-2: #c46a1c;
+  --glass-red-3: #7e3f0b; --glass-red-4: #f2c293;
+}
+.cell.on.tile-7 {
+  --glass-red-1: #ea96b8; --glass-red-2: #b04473;
+  --glass-red-3: #722448; --glass-red-4: #f0b8cd;
 }
 
 footer {
