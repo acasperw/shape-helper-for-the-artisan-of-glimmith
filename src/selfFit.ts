@@ -35,6 +35,14 @@ const TRANSFORMS: { label: string; t: CellTransform }[] = [
   { label: 'Flipped + 270°', t: ({ r, c }) => ({ r: c, c: r }) },
 ];
 
+// Pack a cell into a single integer key. Coords can go slightly negative when
+// the placed copy sits up/left of the original; the offset keeps keys positive
+// and the stride is comfortably larger than any plausible cropped-shape
+// dimension (cells capped at ~20 wide today).
+const PACK_OFFSET = 128;
+const PACK_STRIDE = 256;
+const pack = (r: number, c: number) => (r + PACK_OFFSET) * PACK_STRIDE + (c + PACK_OFFSET);
+
 function cellsOf(grid: Grid): Cell[] {
   const out: Cell[] = [];
   for (let r = 0; r < grid.length; r++) {
@@ -65,17 +73,18 @@ function key(cells: Cell[]): string {
 
 function isConnected(cells: Cell[]): boolean {
   if (cells.length === 0) return false;
-  const present = new Set(cells.map((c) => `${c.r},${c.c}`));
-  const seen = new Set<string>();
+  const present = new Set<number>();
+  for (const c of cells) present.add(pack(c.r, c.c));
+  const seen = new Set<number>([pack(cells[0].r, cells[0].c)]);
   const stack: Cell[] = [cells[0]];
-  seen.add(`${cells[0].r},${cells[0].c}`);
   while (stack.length) {
     const { r, c } = stack.pop()!;
     for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
-      const k = `${r + dr},${c + dc}`;
+      const nr = r + dr, nc = c + dc;
+      const k = pack(nr, nc);
       if (present.has(k) && !seen.has(k)) {
         seen.add(k);
-        stack.push({ r: r + dr, c: c + dc });
+        stack.push({ r: nr, c: nc });
       }
     }
   }
@@ -101,7 +110,8 @@ export function findSelfFits(grid: Grid): SelfFitResult {
 
   const baseCells = baseRaw; // already in [0,H) x [0,W) frame.
   const baseKey = key(baseCells);
-  const baseSet = new Set(baseCells.map((c) => `${c.r},${c.c}`));
+  const baseSet = new Set<number>();
+  for (const c of baseCells) baseSet.add(pack(c.r, c.c));
   const H = cropped.length;
   const W = cropped[0].length;
 
@@ -153,11 +163,11 @@ export function findSelfFits(grid: Grid): SelfFitResult {
         for (const { r, c } of v.cells) {
           const nr = r + dr;
           const nc = c + dc;
-          if (baseSet.has(`${nr},${nc}`)) { overlap = true; break; }
-          if (baseSet.has(`${nr - 1},${nc}`)) contact++;
-          if (baseSet.has(`${nr + 1},${nc}`)) contact++;
-          if (baseSet.has(`${nr},${nc - 1}`)) contact++;
-          if (baseSet.has(`${nr},${nc + 1}`)) contact++;
+          if (baseSet.has(pack(nr, nc))) { overlap = true; break; }
+          if (baseSet.has(pack(nr - 1, nc))) contact++;
+          if (baseSet.has(pack(nr + 1, nc))) contact++;
+          if (baseSet.has(pack(nr, nc - 1))) contact++;
+          if (baseSet.has(pack(nr, nc + 1))) contact++;
         }
         // Require at least two shared edges so the copy actually nests against
         // the original rather than just touching it along a single edge.

@@ -29,6 +29,15 @@ function isValidGrid(g: unknown, n: number): g is Grid {
   );
 }
 
+function useDebouncedValue<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(value), ms);
+    return () => window.clearTimeout(id);
+  }, [value, ms]);
+  return debounced;
+}
+
 function loadPersisted(): PersistedState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -86,14 +95,18 @@ export default function App() {
   };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ size: pieceSize, grid: pieceGrid, boardSize, boardGrid }),
-      );
-    } catch {
-      // ignore quota / disabled storage
-    }
+    // Debounce so a drag-paint doesn't spam localStorage with one write per cell.
+    const id = window.setTimeout(() => {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ size: pieceSize, grid: pieceGrid, boardSize, boardGrid }),
+        );
+      } catch {
+        // ignore quota / disabled storage
+      }
+    }, 250);
+    return () => window.clearTimeout(id);
   }, [pieceSize, pieceGrid, boardSize, boardGrid]);
 
   const setCell = useCallback((r: number, c: number, value: boolean) => {
@@ -185,10 +198,18 @@ export default function App() {
     setBoardGrid((prev) => resizeGrid(prev, clamped));
   };
   const clearBoard = () => setBoardGrid(emptyGrid(boardSize));
-  const tiling = useMemo(() => tileRegion(boardGrid, pieceGrid), [boardGrid, pieceGrid]);
+  // Debounce heavy analyses so dragging to paint stays fluid. Variants are cheap
+  // and can stay live; selfFits and tile both walk the cell-set repeatedly.
+  const debouncedPiece = useDebouncedValue(pieceGrid, 180);
+  const debouncedBoard = useDebouncedValue(boardGrid, 180);
+  const [tilingOpen, setTilingOpen] = useState(false);
+  const tiling = useMemo(
+    () => (tilingOpen ? tileRegion(debouncedBoard, debouncedPiece) : null),
+    [tilingOpen, debouncedBoard, debouncedPiece],
+  );
 
   const variants = useMemo(() => generateVariants(grid), [grid]);
-  const selfFits = useMemo(() => findSelfFits(grid), [grid]);
+  const selfFits = useMemo(() => findSelfFits(debouncedPiece), [debouncedPiece]);
   const { result: splitsResult, pending: splitsPending } = useSplits(grid);
   const [showAllSplits, setShowAllSplits] = useState(false);
   /** Number of distinct shared-edge tiers (e.g., "9 edges", "7 edges") to display. */
@@ -289,10 +310,10 @@ export default function App() {
       </section>
 
       <section className="tiling" aria-labelledby="tiling-heading">
-        <details>
+        <details onToggle={(e) => setTilingOpen((e.currentTarget as HTMLDetailsElement).open)}>
           <summary>
             <h2 id="tiling-heading">Tile a board with this piece</h2>
-            <span className="hint cheating-tag">Solver — finds one full tiling of a board you draw using the piece above</span>
+            <span className="hint cheating-tag">Finds one full tiling of a board you draw using the piece above</span>
           </summary>
           <p className="hint">
             Draw a board below and we'll try to tile every filled cell of it
@@ -650,18 +671,10 @@ function PieceGrid({ grid, setGrid }: { grid: Grid; setGrid: React.Dispatch<Reac
   );
 }
 
-function TilingView({ grid, tiling }: { grid: Grid; tiling: ReturnType<typeof tileRegion> }) {
-  // Cropped bounding box of the drawn board, so the result panel doesn't waste
-  // space on empty rows/cols.
-  let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
-  for (let r = 0; r < grid.length; r++) {
-    for (let c = 0; c < grid[r].length; c++) {
-      if (grid[r][c]) {
-        if (r < minR) minR = r; if (r > maxR) maxR = r;
-        if (c < minC) minC = c; if (c > maxC) maxC = c;
-      }
-    }
-  }
+function TilingView({ grid: _grid, tiling }: { grid: Grid; tiling: ReturnType<typeof tileRegion> | null }) {
+  // The parent only invokes the solver when the accordion is open; while it's
+  // closed we render nothing.
+  if (!tiling) return null;
 
   if (tiling.emptyBoard) return <p className="hint">Draw a board below to start tiling.</p>;
   if (tiling.emptyPiece) return <p className="hint">Draw a piece on the main grid above first.</p>;
@@ -672,6 +685,17 @@ function TilingView({ grid, tiling }: { grid: Grid; tiling: ReturnType<typeof ti
   }
   if (tiling.aborted) return <p className="hint">Search exceeded its iteration budget.</p>;
   if (!tiling.solution) return <p className="hint">No tiling of this board by that piece exists.</p>;
+
+  // Cropped bounding box derived from the solution itself so we stay in sync
+  // with the (debounced) board the solver actually used. Using the live board
+  // grid here would crash when the user clears the board between renders.
+  let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
+  for (const placement of tiling.solution) {
+    for (const { r, c } of placement) {
+      if (r < minR) minR = r; if (r > maxR) maxR = r;
+      if (c < minC) minC = c; if (c > maxC) maxC = c;
+    }
+  }
 
   const rows = maxR - minR + 1;
   const cols = maxC - minC + 1;

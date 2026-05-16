@@ -21,6 +21,11 @@ const MAX_BOARD_CELLS = 80;
 const MAX_PIECE_CELLS = 16;
 const ITERATION_BUDGET = 2_000_000;
 
+// Pack a board cell into a single integer for fast Set lookups; board coords
+// are non-negative and small (< BOARD_MAX_SIZE).
+const PACK_STRIDE = 32;
+const pack = (r: number, c: number) => r * PACK_STRIDE + c;
+
 function cellsOf(grid: Grid): Cell[] {
   const out: Cell[] = [];
   for (let r = 0; r < grid.length; r++) {
@@ -33,16 +38,18 @@ function cellsOf(grid: Grid): Cell[] {
 
 function isConnected(cells: Cell[]): boolean {
   if (cells.length === 0) return false;
-  const present = new Set(cells.map((c) => `${c.r},${c.c}`));
-  const seen = new Set<string>([`${cells[0].r},${cells[0].c}`]);
+  const present = new Set<number>();
+  for (const c of cells) present.add(pack(c.r, c.c));
+  const seen = new Set<number>([pack(cells[0].r, cells[0].c)]);
   const stack: Cell[] = [cells[0]];
   while (stack.length) {
     const { r, c } = stack.pop()!;
     for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
-      const k = `${r + dr},${c + dc}`;
+      const nr = r + dr, nc = c + dc;
+      const k = pack(nr, nc);
       if (present.has(k) && !seen.has(k)) {
         seen.add(k);
-        stack.push({ r: r + dr, c: c + dc });
+        stack.push({ r: nr, c: nc });
       }
     }
   }
@@ -94,9 +101,10 @@ export function tileRegion(board: Grid, piece: Grid): TilingResult {
     variants.push(offsets);
   }
 
-  const boardSet = new Set(boardCells.map((c) => `${c.r},${c.c}`));
+  const boardSet = new Set<number>();
+  for (const c of boardCells) boardSet.add(pack(c.r, c.c));
   const sortedBoard = boardCells.slice().sort((a, b) => a.r - b.r || a.c - b.c);
-  const covered = new Set<string>();
+  const covered = new Set<number>();
   const placements: Placement[] = [];
 
   let iterations = 0;
@@ -105,7 +113,7 @@ export function tileRegion(board: Grid, piece: Grid): TilingResult {
   function firstUncovered(startIdx: number): { idx: number; cell: Cell } | null {
     for (let i = startIdx; i < sortedBoard.length; i++) {
       const c = sortedBoard[i];
-      if (!covered.has(`${c.r},${c.c}`)) return { idx: i, cell: c };
+      if (!covered.has(pack(c.r, c.c))) return { idx: i, cell: c };
     }
     return null;
   }
@@ -125,16 +133,16 @@ export function tileRegion(board: Grid, piece: Grid): TilingResult {
       for (const off of offsets) {
         const r = cell.r + off.r;
         const c = cell.c + off.c;
-        const k = `${r},${c}`;
+        const k = pack(r, c);
         if (!boardSet.has(k) || covered.has(k)) { ok = false; break; }
         placed.push({ r, c });
       }
       if (!ok) continue;
-      for (const p of placed) covered.add(`${p.r},${p.c}`);
+      for (const p of placed) covered.add(pack(p.r, p.c));
       placements.push(placed);
       if (solve(idx + 1)) return true;
       placements.pop();
-      for (const p of placed) covered.delete(`${p.r},${p.c}`);
+      for (const p of placed) covered.delete(pack(p.r, p.c));
       if (aborted) return false;
     }
     return false;
