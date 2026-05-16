@@ -1,0 +1,177 @@
+:root {
+  --cell-size: 32px;
+  --mini-cell-size: 18px;
+  --bg: #0f1115;
+  --panel: #181b22;
+  --border: #2a2f3a;
+  --cell-empty: #1f2330;
+  --cell-on: #6bd1ff;
+  --cell-on-edge: #2196d6;
+  --text: #e6e8ee;
+  --muted: #9aa3b2;
+  --accent: #6bd1ff;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0.3px;
+}
+.subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+h2 {
+  font-size: 18px;
+  margin: 24px 0 8px;
+}
+
+.hint {
+  color: var(--muted);
+  margin: 4px 0 12px;
+  font-size: 14px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.controls input[type="range"] { width: 200px; }
+
+button {
+  background: var(--accent);
+  color: #08263a;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.08); }
+
+.draw-area, .variants {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.grid {
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  max-width: 100%;
+  background: var(--border);
+  padding: 2px;
+  border-radius: 4px;
+  touch-action: none;
+  user-select: none;
+  /* Responsive cell size: shrink so the whole grid fits the viewport width.
+     --size is set inline based on grid dimension. */
+  --cell-size: min(32px, calc((100vw - 56px) / var(--size, 10) - 2px));
+}
+
+.cell {
+  width: var(--cell-size);
+  height: var(--cell-size);
+  background: var(--cell-empty);
+  border-radius: 2px;
+  transition: background 60ms ease;
+}
+.cell.on {
+  background: var(--cell-on);
+  box-shadow: inset 0 0 0 1px var(--cell-on-edge);
+}
+
+.draw-area .cell:hover {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  cursor: pointer;
+}
+
+@media (hover: none) {
+  .draw-area .cell:hover { outline: none; }
+}
+
+@media (max-width: 600px) {
+  .app { padding: 16px 12px 48px; }
+  :root { --mini-cell-size: 14px; }
+  .controls input[type="range"] { width: 140px; }
+}
+
+.variant-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+.variant {
+  margin: 0;
+  background: #11141b;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.mini-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+  padding: 1px;
+  border-radius: 3px;
+}
+.mini-grid .cell {
+  width: var(--mini-cell-size);
+  height: var(--mini-cell-size);
+}
+
+figcaption {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+.dims { opacity: 0.7; }
+
+footer {
+  margin-top: 28px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+footer a { color: var(--accent); }

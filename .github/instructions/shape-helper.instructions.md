@@ -1,0 +1,1 @@
+A shape helping website for the game The Artisan of Glimmith. Drawing a shape will show mirror, flip, and rotation options.
