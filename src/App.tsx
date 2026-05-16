@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { emptyGrid, generateVariants, resizeGrid, type Grid } from './shape';
+import type { Split, SplitsResult } from './splits';
+import type { SplitsRequest, SplitsResponse } from './splits.worker';
+import { findSelfFits, type SelfFit } from './selfFit';
 
 const MIN_SIZE = 5;
 const MAX_SIZE = 20;
 const DEFAULT_SIZE = 10;
 const STORAGE_KEY = 'shape-helper:v1';
+/** Wait this long after the last edit before kicking off split analysis. */
+const SPLITS_DEBOUNCE_MS = 400;
 
 type PaintMode = 'fill' | 'erase' | null;
 
@@ -152,6 +157,37 @@ export default function App() {
   const clear = () => setGrid(emptyGrid(size));
 
   const variants = useMemo(() => generateVariants(grid), [grid]);
+  const selfFits = useMemo(() => findSelfFits(grid), [grid]);
+  const { result: splitsResult, pending: splitsPending } = useSplits(grid);
+  const [showAllSplits, setShowAllSplits] = useState(false);
+  /** Number of distinct shared-edge tiers (e.g., "9 edges", "7 edges") to display. */
+  const [selfFitTiers, setSelfFitTiers] = useState(3);
+  const selfFitDistinctTiers = useMemo(
+    () => Array.from(new Set(selfFits.fits.map((f) => f.contactEdges))).sort((a, b) => b - a),
+    [selfFits],
+  );
+  // Clamp the slider when the underlying tier count changes.
+  const effectiveSelfFitTiers = Math.min(selfFitTiers, Math.max(1, selfFitDistinctTiers.length));
+  const selfFitCutoff = selfFitDistinctTiers[effectiveSelfFitTiers - 1] ?? -Infinity;
+  const displayedSelfFits = useMemo(
+    () => selfFits.fits.filter((f) => f.contactEdges >= selfFitCutoff),
+    [selfFits, selfFitCutoff],
+  );
+  // A piece of one cell isn't a useful tiling answer, so hide those.
+  const meaningfulSplits = useMemo(
+    () =>
+      (splitsResult?.splits ?? []).filter(
+        (s) => Math.min(s.a.length, s.b.length) >= 2,
+      ),
+    [splitsResult],
+  );
+  const displayedSplits = useMemo(
+    () =>
+      showAllSplits
+        ? meaningfulSplits
+        : meaningfulSplits.filter((s) => s.congruent),
+    [meaningfulSplits, showAllSplits],
+  );
 
   return (
     <div className="app">
@@ -234,6 +270,118 @@ export default function App() {
         )}
       </section>
 
+      <section className="self-fits" aria-labelledby="self-fits-heading">
+        <h2 id="self-fits-heading">
+          Fits with itself{' '}
+          {!selfFits.empty && !selfFits.disconnected ? `(${selfFits.fits.length})` : null}
+        </h2>
+        <p className="hint">
+          Every way a single rotated or flipped copy of the drawn shape can sit
+          snugly against the original (sharing at least two edges, no overlap).
+          Original is shown in red, the placed copy in blue.
+        </p>
+        {selfFitDistinctTiers.length > 1 ? (
+          <div className="splits-controls">
+            <label>
+              Show top{' '}
+              <strong aria-live="polite">{effectiveSelfFitTiers}</strong>{' '}
+              of {selfFitDistinctTiers.length} shared-edge tier{selfFitDistinctTiers.length === 1 ? '' : 's'}
+              {' '}
+              <input
+                type="range"
+                min={1}
+                max={selfFitDistinctTiers.length}
+                value={effectiveSelfFitTiers}
+                aria-valuetext={`Top ${effectiveSelfFitTiers} of ${selfFitDistinctTiers.length} tiers (≥ ${selfFitCutoff} shared edges)`}
+                onChange={(e) => setSelfFitTiers(Number(e.target.value))}
+              />{' '}
+              <span className="dims">
+                ({displayedSelfFits.length} of {selfFits.fits.length} shown, ≥ {selfFitCutoff} edge{selfFitCutoff === 1 ? '' : 's'})
+              </span>
+            </label>
+          </div>
+        ) : null}
+        {selfFits.empty ? (
+          <p className="hint">Draw a shape to explore self-fitting placements.</p>
+        ) : selfFits.disconnected ? (
+          <p className="hint">Self-fit analysis only works on a single connected shape.</p>
+        ) : selfFits.fits.length === 0 ? (
+          <p className="hint">This shape cannot fit snugly against a rotated or flipped copy of itself.</p>
+        ) : (
+          <div className="split-list">
+            {displayedSelfFits.map((f, i) => (
+              <SelfFitView key={i} fit={f} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="splits" aria-labelledby="splits-heading" aria-busy={splitsPending}>
+        <h2 id="splits-heading">
+          Shapes that tile into this one{' '}
+          {splitsResult && !splitsResult.tooLarge && !splitsResult.disconnected && splitsResult.totalCells >= 4
+            ? `(${displayedSplits.length}${splitsResult.aborted ? '+' : ''})`
+            : null}
+        </h2>
+        <p className="hint">
+          A single piece that, placed twice (with rotations or flips), exactly
+          fills the drawn shape. The two copies are shown in red and blue.
+        </p>
+        <div className="splits-controls">
+          <label>
+            <input
+              type="checkbox"
+              checked={showAllSplits}
+              onChange={(e) => setShowAllSplits(e.target.checked)}
+            />{' '}
+            Also show non-matching 2-piece cuts (the two pieces are different shapes)
+          </label>
+        </div>
+        {splitsPending ? (
+          <p className="hint" role="status">Computing tilings…</p>
+        ) : !splitsResult ? (
+          <p className="hint">Draw a shape with at least 4 cells to see tilings.</p>
+        ) : splitsResult.tooLarge ? (
+          <p className="hint">
+            Shape has {splitsResult.totalCells} cells — tiling analysis is
+            capped at {splitsResult.maxCells} cells to keep the browser
+            responsive.
+          </p>
+        ) : splitsResult.disconnected ? (
+          <p className="hint">
+            Tiling analysis only works on a single connected shape.
+          </p>
+        ) : splitsResult.totalCells < 4 ? (
+          <p className="hint">Draw a shape with at least 4 cells to see tilings.</p>
+        ) : displayedSplits.length === 0 ? (
+          splitsResult.aborted ? (
+            <p className="hint">
+              Search hit its iteration budget before finding a tiling. The shape may still have one.
+            </p>
+          ) : (
+            <p className="hint">
+              {showAllSplits
+                ? 'No 2-piece cuts found.'
+                : 'No single piece tiles this shape twice. Try the option above to see uneven 2-piece cuts.'}
+            </p>
+          )
+        ) : (
+          <>
+            {splitsResult.aborted ? (
+              <p className="hint">
+                Showing partial results — the search hit its iteration budget
+                before exploring every possibility.
+              </p>
+            ) : null}
+            <div className="split-list">
+              {displayedSplits.map((s, i) => (
+                <SplitView key={i} split={s} />
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
       <footer>
         <a
           href="https://github.com/acasperw/shape-helper-for-the-artisan-of-glimmith/"
@@ -242,6 +390,130 @@ export default function App() {
         >Source on GitHub</a>
       </footer>
     </div>
+  );
+}
+
+function SplitView({ split }: { split: Split }) {
+  // Bounding box of the whole shape (A ∪ B) so the cut is shown in context.
+  let minR = Infinity, minC = Infinity, maxR = -Infinity, maxC = -Infinity;
+  for (const { r, c } of split.a) {
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+  for (const { r, c } of split.b) {
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+  const rows = maxR - minR + 1;
+  const cols = maxC - minC + 1;
+
+  // Per-piece grids drive the edge outlines so each piece gets its own
+  // perimeter (which together draw the cut line).
+  const gridA: Grid = Array.from({ length: rows }, () => new Array(cols).fill(false));
+  const gridB: Grid = Array.from({ length: rows }, () => new Array(cols).fill(false));
+  for (const { r, c } of split.a) gridA[r - minR][c - minC] = true;
+  for (const { r, c } of split.b) gridB[r - minR][c - minC] = true;
+
+  const aLabel = `${split.a.length} cells`;
+  const bLabel = `${split.b.length} cells`;
+
+  return (
+    <figure className="variant split">
+      <div
+        className="mini-grid"
+        role="img"
+        aria-label={`${split.congruent ? 'Congruent split' : 'Split'}: ${aLabel} and ${bLabel}`}
+        style={{
+          ['--cols' as string]: cols,
+          ['--rows' as string]: rows,
+          gridTemplateColumns: `repeat(${cols}, var(--cell-size))`,
+          gridTemplateRows: `repeat(${rows}, var(--cell-size))`,
+        }}
+      >
+        {Array.from({ length: rows }).flatMap((_, r) =>
+          Array.from({ length: cols }).map((_, c) => {
+            const inA = gridA[r][c];
+            const inB = gridB[r][c];
+            const cls = inA
+              ? 'cell on piece-a'
+              : inB
+                ? 'cell on piece-b'
+                : 'cell';
+            const style = inA
+              ? edgeStyle(gridA, r, c)
+              : inB
+                ? edgeStyle(gridB, r, c)
+                : undefined;
+            return (
+              <div
+                key={`${r}-${c}`}
+                aria-hidden="true"
+                className={cls}
+                style={style}
+              />
+            );
+          })
+        )}
+      </div>
+      <figcaption>
+        {split.congruent ? <strong>Tiles twice</strong> : 'Uneven cut'}{' '}
+        <span className="dims">({split.a.length} + {split.b.length})</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+function SelfFitView({ fit }: { fit: SelfFit }) {
+  // Bounding box over A ∪ B (B may sit outside A's frame).
+  let minR = Infinity, minC = Infinity, maxR = -Infinity, maxC = -Infinity;
+  for (const { r, c } of fit.a) {
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+  for (const { r, c } of fit.b) {
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+  const rows = maxR - minR + 1;
+  const cols = maxC - minC + 1;
+
+  const gridA: Grid = Array.from({ length: rows }, () => new Array(cols).fill(false));
+  const gridB: Grid = Array.from({ length: rows }, () => new Array(cols).fill(false));
+  for (const { r, c } of fit.a) gridA[r - minR][c - minC] = true;
+  for (const { r, c } of fit.b) gridB[r - minR][c - minC] = true;
+
+  return (
+    <figure className="variant split">
+      <div
+        className="mini-grid"
+        role="img"
+        aria-label={`Self-fit placement (${fit.variantLabel}), ${fit.contactEdges} shared edges`}
+        style={{
+          ['--cols' as string]: cols,
+          ['--rows' as string]: rows,
+          gridTemplateColumns: `repeat(${cols}, var(--cell-size))`,
+          gridTemplateRows: `repeat(${rows}, var(--cell-size))`,
+        }}
+      >
+        {Array.from({ length: rows }).flatMap((_, r) =>
+          Array.from({ length: cols }).map((_, c) => {
+            const inA = gridA[r][c];
+            const inB = gridB[r][c];
+            const cls = inA ? 'cell on piece-a' : inB ? 'cell on piece-b' : 'cell';
+            const style = inA
+              ? edgeStyle(gridA, r, c)
+              : inB
+                ? edgeStyle(gridB, r, c)
+                : undefined;
+            return <div key={`${r}-${c}`} aria-hidden="true" className={cls} style={style} />;
+          })
+        )}
+      </div>
+      <figcaption>
+        <strong>{fit.variantLabel}</strong>{' '}
+        <span className="dims">{fit.contactEdges} shared edge{fit.contactEdges === 1 ? '' : 's'}</span>
+      </figcaption>
+    </figure>
   );
 }
 
@@ -257,8 +529,8 @@ function VariantView({ label, grid }: { label: string; grid: Grid }) {
         style={{
           ['--cols' as string]: cols,
           ['--rows' as string]: rows,
-          gridTemplateColumns: `repeat(${cols}, var(--mini-cell-size))`,
-          gridTemplateRows: `repeat(${rows}, var(--mini-cell-size))`,
+          gridTemplateColumns: `repeat(${cols}, var(--cell-size))`,
+          gridTemplateRows: `repeat(${rows}, var(--cell-size))`,
         }}
       >
         {grid.map((row, r) =>
@@ -294,4 +566,62 @@ function edgeStyle(grid: Grid, r: number, c: number): React.CSSProperties {
     ['--eb' as string]: filled(r + 1, c) ? 0 : 1,
     ['--el' as string]: filled(r, c - 1) ? 0 : 1,
   };
+}
+
+/**
+ * Run split analysis in a Web Worker, debounced so we only kick off after the
+ * user stops editing. Stale responses (from a grid that has since changed) are
+ * dropped by comparing requestIds.
+ */
+function useSplits(grid: Grid): { result: SplitsResult | null; pending: boolean } {
+  const [result, setResult] = useState<SplitsResult | null>(null);
+  const [pending, setPending] = useState(false);
+  const workerRef = useRef<Worker | null>(null);
+  const requestIdRef = useRef(0);
+  const latestRequestIdRef = useRef(0);
+
+  // Spin up the worker once.
+  useEffect(() => {
+    const worker = new Worker(new URL('./splits.worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    workerRef.current = worker;
+    worker.addEventListener('message', (e: MessageEvent<SplitsResponse>) => {
+      // Drop responses for requests that have already been superseded.
+      if (e.data.requestId !== latestRequestIdRef.current) return;
+      setResult(e.data.result);
+      setPending(false);
+    });
+    return () => {
+      worker.terminate();
+      workerRef.current = null;
+    };
+  }, []);
+
+  // Debounce: schedule a worker request 400ms after the most recent grid edit.
+  useEffect(() => {
+    // If the grid has no filled cells, short-circuit to an empty result without
+    // bothering the worker.
+    const hasAny = grid.some((row) => row.some(Boolean));
+    if (!hasAny) {
+      requestIdRef.current++;
+      latestRequestIdRef.current = requestIdRef.current;
+      setResult(null);
+      setPending(false);
+      return;
+    }
+    setPending(true);
+    const timer = window.setTimeout(() => {
+      const worker = workerRef.current;
+      if (!worker) return;
+      requestIdRef.current++;
+      const requestId = requestIdRef.current;
+      latestRequestIdRef.current = requestId;
+      const req: SplitsRequest = { requestId, grid };
+      worker.postMessage(req);
+    }, SPLITS_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [grid]);
+
+  return { result, pending };
 }

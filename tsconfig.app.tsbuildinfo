@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/shape.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/selffit.ts","./src/shape.ts","./src/splits.ts","./src/splits.worker.ts"],"version":"5.9.3"}
