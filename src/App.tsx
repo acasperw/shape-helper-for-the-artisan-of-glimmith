@@ -115,6 +115,8 @@ export default function App() {
           className="grid"
           style={{
             ['--size' as string]: size,
+            ['--cols' as string]: size,
+            ['--rows' as string]: size,
             gridTemplateColumns: `repeat(${size}, var(--cell-size))`,
             gridTemplateRows: `repeat(${size}, var(--cell-size))`,
           }}
@@ -126,6 +128,7 @@ export default function App() {
               <div
                 key={`${r}-${c}`}
                 className={`cell ${cell ? 'on' : ''}`}
+                style={cell ? edgeStyle(grid, r, c) : undefined}
                 onPointerDown={handlePointerDown(r, c)}
                 onPointerEnter={handlePointerEnter(r, c)}
               />
@@ -166,17 +169,42 @@ function VariantView({ label, grid }: { label: string; grid: Grid }) {
       <div
         className="mini-grid"
         style={{
+          ['--cols' as string]: cols,
+          ['--rows' as string]: rows,
           gridTemplateColumns: `repeat(${cols}, var(--mini-cell-size))`,
           gridTemplateRows: `repeat(${rows}, var(--mini-cell-size))`,
         }}
       >
         {grid.map((row, r) =>
           row.map((cell, c) => (
-            <div key={`${r}-${c}`} className={`cell ${cell ? 'on' : ''}`} />
+            <div
+              key={`${r}-${c}`}
+              className={`cell ${cell ? 'on' : ''}`}
+              style={cell ? edgeStyle(grid, r, c) : undefined}
+            />
           ))
         )}
       </div>
       <figcaption>{label} <span className="dims">({rows}×{cols})</span></figcaption>
     </figure>
   );
+}
+
+/**
+ * Compute the perimeter-edge CSS variables for a filled cell. Each variable is
+ * 1 when the cell has no filled neighbor on that side (so a thick outline is
+ * drawn there) and 0 otherwise. This produces the "merged region" outline seen
+ * in the game where only the outer border of the shape is rendered.
+ */
+function edgeStyle(grid: Grid, r: number, c: number): React.CSSProperties {
+  const filled = (rr: number, cc: number) =>
+    rr >= 0 && rr < grid.length && cc >= 0 && cc < grid[rr].length && grid[rr][cc];
+  return {
+    ['--row' as string]: r,
+    ['--col' as string]: c,
+    ['--et' as string]: filled(r - 1, c) ? 0 : 1,
+    ['--er' as string]: filled(r, c + 1) ? 0 : 1,
+    ['--eb' as string]: filled(r + 1, c) ? 0 : 1,
+    ['--el' as string]: filled(r, c - 1) ? 0 : 1,
+  };
 }

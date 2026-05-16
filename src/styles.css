@@ -1,15 +1,26 @@
 :root {
-  --cell-size: 32px;
-  --mini-cell-size: 18px;
-  --bg: #0f1115;
-  --panel: #181b22;
-  --border: #2a2f3a;
-  --cell-empty: #1f2330;
-  --cell-on: #6bd1ff;
-  --cell-on-edge: #2196d6;
-  --text: #e6e8ee;
-  --muted: #9aa3b2;
-  --accent: #6bd1ff;
+  --cell-size: 36px;
+  --mini-cell-size: 22px;
+
+  /* Parchment palette inspired by The Artisan of Glimmith */
+  --bg: #c9a36b;
+  --bg-2: #b88a4f;
+  --parchment: #f1e1bd;
+  --parchment-2: #e8d4a3;
+  --ink: #1a1410;
+  --ink-soft: #3a2a1c;
+  --muted: #6b513a;
+  --panel-border: #8a6a44;
+
+  /* Stained-glass red */
+  --glass-red-1: #f06257;
+  --glass-red-2: #c8362f;
+  --glass-red-3: #a01a1f;
+  --glass-red-4: #e88a7a;
+
+  --grid-line: rgba(60, 40, 24, 0.35);
+  --grid-line-strong: #1d130b;
+  --accent: #a01a1f;
 }
 
 * { box-sizing: border-box; }
@@ -18,9 +29,9 @@ html, body, #root {
   margin: 0;
   padding: 0;
   min-height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  font-family: 'Georgia', 'Iowan Old Style', 'Palatino Linotype', serif;
+  background: radial-gradient(ellipse at top, #d6b079 0%, var(--bg) 45%, var(--bg-2) 100%);
 }
 
 .app {
@@ -31,23 +42,46 @@ html, body, #root {
 
 header h1 {
   margin: 0;
-  font-size: 28px;
-  letter-spacing: 0.3px;
+  font-size: 32px;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.5);
 }
 .subtitle {
   margin: 4px 0 0;
   color: var(--muted);
+  font-style: italic;
 }
 
 h2 {
-  font-size: 18px;
+  font-size: 20px;
   margin: 24px 0 8px;
+  color: var(--ink-soft);
 }
 
 .hint {
   color: var(--muted);
   margin: 4px 0 12px;
   font-size: 14px;
+  font-style: italic;
+}
+
+/* Parchment-style panels */
+.controls,
+.draw-area,
+.variants {
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(255, 250, 230, 0.6), transparent 60%),
+    radial-gradient(ellipse at 80% 90%, rgba(160, 120, 70, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 240, 200, 0.6) inset,
+    0 0 0 1px rgba(255, 240, 200, 0.25) inset,
+    0 6px 18px rgba(40, 25, 10, 0.25);
 }
 
 .controls {
@@ -55,64 +89,150 @@ h2 {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  background: var(--panel);
-  border: 1px solid var(--border);
   padding: 12px 16px;
-  border-radius: 8px;
-  margin-top: 16px;
 }
 
 .controls label {
   display: flex;
   align-items: center;
   gap: 10px;
+  color: var(--ink-soft);
 }
-.controls input[type="range"] { width: 200px; }
+.controls input[type="range"] { width: 200px; accent-color: var(--accent); }
 
 button {
-  background: var(--accent);
-  color: #08263a;
-  border: none;
-  padding: 8px 14px;
+  background: linear-gradient(180deg, #b8331e 0%, #8a1f15 100%);
+  color: #fbe7c2;
+  border: 1px solid #4a0f0a;
+  padding: 8px 16px;
   border-radius: 6px;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255, 200, 170, 0.35) inset,
+    0 2px 4px rgba(40, 10, 5, 0.35);
 }
 button:hover { filter: brightness(1.08); }
+button:active { transform: translateY(1px); }
 
-.draw-area, .variants {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 16px;
-  border-radius: 8px;
-  margin-top: 16px;
+/* ---------- Drawing canvas + grid ---------- */
+
+.draw-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.draw-area h2,
+.draw-area .hint {
+  align-self: flex-start;
 }
 
 .grid {
   display: grid;
-  gap: 2px;
+  gap: 0;
   width: max-content;
   max-width: 100%;
-  background: var(--border);
-  padding: 2px;
-  border-radius: 4px;
   touch-action: none;
   user-select: none;
-  /* Responsive cell size: shrink so the whole grid fits the viewport width.
-     --size is set inline based on grid dimension. */
-  --cell-size: min(32px, calc((100vw - 56px) / var(--size, 10) - 2px));
+  /* Responsive cell size: shrink so the whole grid fits the viewport width. */
+  --cell-size: min(36px, calc((100vw - 96px) / var(--size, 10)));
+  margin: 8px auto 0;
+  border: 1px dashed var(--grid-line);
+  background:
+    repeating-linear-gradient(45deg,
+      rgba(255, 245, 220, 0) 0 8px,
+      rgba(180, 140, 90, 0.05) 8px 16px);
 }
 
 .cell {
   width: var(--cell-size);
   height: var(--cell-size);
-  background: var(--cell-empty);
-  border-radius: 2px;
-  transition: background 60ms ease;
+  position: relative;
+  background: transparent;
+  /* Empty cells: subtle dashed inner guides */
+  border-top: 1px dashed var(--grid-line);
+  border-left: 1px dashed var(--grid-line);
+  transition: background 80ms ease;
 }
+
+/* Stained-glass filled cell.
+   One large non-repeating pattern is stretched across the entire grid, and
+   each cell shows its slice via background-position. The pattern packs many
+   shards and lead lines so even small filled regions show detail, while
+   adjacent cells line up to form one continuous pane (no tiling seams). */
 .cell.on {
-  background: var(--cell-on);
-  box-shadow: inset 0 0 0 1px var(--cell-on-edge);
+  background-image:
+    /* bright highlights scattered across the grid */
+    radial-gradient(ellipse 6% 5% at  8% 12%, rgba(255, 230, 210, 0.55), transparent 70%),
+    radial-gradient(ellipse 5% 4% at 28%  6%, rgba(255, 230, 210, 0.45), transparent 70%),
+    radial-gradient(ellipse 7% 5% at 52% 18%, rgba(255, 220, 200, 0.45), transparent 70%),
+    radial-gradient(ellipse 4% 4% at 74%  9%, rgba(255, 220, 200, 0.40), transparent 70%),
+    radial-gradient(ellipse 6% 5% at 92% 22%, rgba(255, 220, 200, 0.40), transparent 70%),
+    radial-gradient(ellipse 5% 5% at 14% 38%, rgba(255, 220, 200, 0.35), transparent 70%),
+    radial-gradient(ellipse 6% 5% at 44% 46%, rgba(255, 220, 200, 0.35), transparent 70%),
+    radial-gradient(ellipse 5% 4% at 82% 52%, rgba(255, 220, 200, 0.35), transparent 70%),
+    radial-gradient(ellipse 6% 5% at 24% 68%, rgba(255, 220, 200, 0.35), transparent 70%),
+    radial-gradient(ellipse 5% 4% at 58% 74%, rgba(255, 220, 200, 0.35), transparent 70%),
+    radial-gradient(ellipse 6% 5% at 88% 82%, rgba(255, 220, 200, 0.30), transparent 70%),
+    radial-gradient(ellipse 5% 4% at 38% 92%, rgba(255, 220, 200, 0.30), transparent 70%),
+    /* deeper shard pockets */
+    radial-gradient(ellipse 10% 8% at 18% 22%, rgba(70, 8, 8, 0.40), transparent 75%),
+    radial-gradient(ellipse 12% 9% at 66% 32%, rgba(70, 8, 8, 0.40), transparent 75%),
+    radial-gradient(ellipse 10% 8% at 36% 56%, rgba(70, 8, 8, 0.45), transparent 75%),
+    radial-gradient(ellipse 12% 9% at 78% 68%, rgba(70, 8, 8, 0.50), transparent 75%),
+    radial-gradient(ellipse 10% 8% at 12% 84%, rgba(70, 8, 8, 0.40), transparent 75%),
+    radial-gradient(ellipse 11% 8% at 54% 90%, rgba(70, 8, 8, 0.40), transparent 75%),
+    /* mid-tone shards */
+    radial-gradient(ellipse 14% 11% at 30% 30%, var(--glass-red-1), transparent 70%),
+    radial-gradient(ellipse 16% 12% at 72% 18%, var(--glass-red-4), transparent 70%),
+    radial-gradient(ellipse 14% 11% at 20% 62%, var(--glass-red-1), transparent 70%),
+    radial-gradient(ellipse 16% 12% at 64% 60%, var(--glass-red-4), transparent 70%),
+    radial-gradient(ellipse 14% 11% at 86% 84%, var(--glass-red-1), transparent 70%),
+    /* base */
+    linear-gradient(160deg, var(--glass-red-2) 0%, var(--glass-red-3) 100%);
+  background-size:
+    calc(var(--cell-size) * var(--cols, 10)) calc(var(--cell-size) * var(--rows, 10));
+  background-position:
+    calc(var(--col, 0) * var(--cell-size) * -1)
+    calc(var(--row, 0) * var(--cell-size) * -1);
+  background-repeat: no-repeat;
+  border-color: transparent;
+}
+
+/* "Leaded" shard lines — many strokes at varied angles spanning the whole
+   pane so every cell intersects a few. */
+.cell.on::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  background-image:
+    linear-gradient(112deg, transparent 14%, rgba(40, 8, 5, 0.22) 14.6%, transparent 15.2%),
+    linear-gradient(112deg, transparent 41%, rgba(40, 8, 5, 0.18) 41.5%, transparent 42%),
+    linear-gradient(112deg, transparent 73%, rgba(40, 8, 5, 0.18) 73.5%, transparent 74%),
+    linear-gradient( 28deg, transparent 22%, rgba(40, 8, 5, 0.18) 22.5%, transparent 23%),
+    linear-gradient( 28deg, transparent 58%, rgba(40, 8, 5, 0.16) 58.5%, transparent 59%),
+    linear-gradient( 28deg, transparent 86%, rgba(40, 8, 5, 0.14) 86.5%, transparent 87%),
+    linear-gradient(165deg, transparent 35%, rgba(40, 8, 5, 0.14) 35.5%, transparent 36%),
+    linear-gradient(165deg, transparent 68%, rgba(40, 8, 5, 0.14) 68.5%, transparent 69%);
+  background-size:
+    calc(var(--cell-size) * var(--cols, 10)) calc(var(--cell-size) * var(--rows, 10));
+  background-position:
+    calc(var(--col, 0) * var(--cell-size) * -1)
+    calc(var(--row, 0) * var(--cell-size) * -1);
+  background-repeat: no-repeat;
+}
+
+/* Thick perimeter outline drawn via inset box-shadow, only on outer edges */
+.cell.on {
+  --et: 0; --er: 0; --eb: 0; --el: 0;
+  box-shadow:
+    inset 0 calc(var(--et) * 3px) 0 0 var(--grid-line-strong),
+    inset calc(var(--er) * -3px) 0 0 0 var(--grid-line-strong),
+    inset 0 calc(var(--eb) * -3px) 0 0 var(--grid-line-strong),
+    inset calc(var(--el) * 3px) 0 0 0 var(--grid-line-strong);
 }
 
 .draw-area .cell:hover {
@@ -120,45 +240,49 @@ button:hover { filter: brightness(1.08); }
   outline-offset: -1px;
   cursor: pointer;
 }
-
 @media (hover: none) {
   .draw-area .cell:hover { outline: none; }
 }
 
-@media (max-width: 600px) {
-  .app { padding: 16px 12px 48px; }
-  :root { --mini-cell-size: 14px; }
-  .controls input[type="range"] { width: 140px; }
-}
+/* ---------- Variants ---------- */
 
 .variant-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 14px;
 }
 
 .variant {
   margin: 0;
-  background: #11141b;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px;
+  background: linear-gradient(180deg, #fbeecd 0%, #efdcad 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  box-shadow: 0 2px 6px rgba(40, 25, 10, 0.18);
 }
 
 .mini-grid {
   display: grid;
-  gap: 1px;
-  background: var(--border);
-  padding: 1px;
-  border-radius: 3px;
+  gap: 0;
+  border: 1px dashed var(--grid-line);
+  /* Use mini cell size for the continuous-glass background math */
+  --cell-size: var(--mini-cell-size);
 }
 .mini-grid .cell {
   width: var(--mini-cell-size);
   height: var(--mini-cell-size);
+}
+/* Thinner perimeter on mini grids */
+.mini-grid .cell.on {
+  box-shadow:
+    inset 0 calc(var(--et) * 2px) 0 0 var(--grid-line-strong),
+    inset calc(var(--er) * -2px) 0 0 0 var(--grid-line-strong),
+    inset 0 calc(var(--eb) * -2px) 0 0 var(--grid-line-strong),
+    inset calc(var(--el) * 2px) 0 0 0 var(--grid-line-strong);
 }
 
 figcaption {
@@ -175,3 +299,9 @@ footer {
   font-size: 13px;
 }
 footer a { color: var(--accent); }
+
+@media (max-width: 600px) {
+  .app { padding: 16px 12px 48px; }
+  :root { --mini-cell-size: 16px; }
+  .controls input[type="range"] { width: 140px; }
+}
