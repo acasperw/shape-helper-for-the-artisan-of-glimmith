@@ -156,6 +156,28 @@ button:active { transform: translateY(1px); }
   transition: background 80ms ease;
 }
 
+/* Reset native <button> chrome for grid cells (drawing surface uses buttons
+   for keyboard + screen-reader access). */
+button.cell {
+  appearance: none;
+  -webkit-appearance: none;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  box-shadow: none;
+  cursor: pointer;
+}
+button.cell:focus { outline: none; }
+button.cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
 /* Stained-glass filled cell.
    One large non-repeating pattern is stretched across the entire grid, and
    each cell shows its slice via background-position. The pattern packs many

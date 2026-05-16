@@ -38,6 +38,27 @@ export default function App() {
   const [size, setSize] = useState(initial?.size ?? DEFAULT_SIZE);
   const [grid, setGrid] = useState<Grid>(() => initial?.grid ?? emptyGrid(DEFAULT_SIZE));
   const paintModeRef = useRef<PaintMode>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  // Roving-tabindex anchor: only this cell is in the tab order; arrow keys move it.
+  const [focus, setFocus] = useState({ r: 0, c: 0 });
+
+  // Keep focus coordinates in range when the grid shrinks.
+  useEffect(() => {
+    setFocus((f) => ({
+      r: Math.min(f.r, size - 1),
+      c: Math.min(f.c, size - 1),
+    }));
+  }, [size]);
+
+  const focusCell = (r: number, c: number) => {
+    setFocus({ r, c });
+    // Move DOM focus to the new cell. Query inside the grid so we don't
+    // steal focus if the user isn't currently in the grid.
+    const next = gridRef.current?.querySelector<HTMLButtonElement>(
+      `[data-r="${r}"][data-c="${c}"]`,
+    );
+    next?.focus();
+  };
 
   useEffect(() => {
     try {
@@ -73,6 +94,51 @@ export default function App() {
     setCell(r, c, paintModeRef.current === 'fill');
   };
 
+  const handleCellKeyDown = (r: number, c: number) => (e: React.KeyboardEvent) => {
+    const last = size - 1;
+    switch (e.key) {
+      case ' ':
+      case 'Enter':
+        e.preventDefault();
+        setCell(r, c, !grid[r][c]);
+        return;
+      case 'ArrowUp':
+        e.preventDefault();
+        focusCell(Math.max(0, r - 1), c);
+        return;
+      case 'ArrowDown':
+        e.preventDefault();
+        focusCell(Math.min(last, r + 1), c);
+        return;
+      case 'ArrowLeft':
+        e.preventDefault();
+        focusCell(r, Math.max(0, c - 1));
+        return;
+      case 'ArrowRight':
+        e.preventDefault();
+        focusCell(r, Math.min(last, c + 1));
+        return;
+      case 'Home':
+        e.preventDefault();
+        if (e.ctrlKey) focusCell(0, 0);
+        else focusCell(r, 0);
+        return;
+      case 'End':
+        e.preventDefault();
+        if (e.ctrlKey) focusCell(last, last);
+        else focusCell(r, last);
+        return;
+      case 'PageUp':
+        e.preventDefault();
+        focusCell(0, c);
+        return;
+      case 'PageDown':
+        e.preventDefault();
+        focusCell(last, c);
+        return;
+    }
+  };
+
   const endPaint = () => {
     paintModeRef.current = null;
   };
@@ -96,23 +162,32 @@ export default function App() {
 
       <section className="controls">
         <label>
-          Grid size: <strong>{size}×{size}</strong>
+          Grid size:{' '}
+          <strong aria-live="polite">
+            {size}×{size}
+          </strong>
           <input
             type="range"
             min={MIN_SIZE}
             max={MAX_SIZE}
             value={size}
+            aria-valuetext={`${size} by ${size}`}
             onChange={(e) => handleSizeChange(Number(e.target.value))}
           />
         </label>
         <button onClick={clear} type="button">Clear</button>
       </section>
 
-      <section className="draw-area">
-        <h2>Draw your shape</h2>
-        <p className="hint">Click or drag to fill/erase cells.</p>
+      <section className="draw-area" aria-labelledby="draw-heading">
+        <h2 id="draw-heading">Draw your shape</h2>
+        <p className="hint">Click or drag to fill/erase cells. Tab to enter the grid, arrow keys to move, Space or Enter to toggle.</p>
         <div
+          ref={gridRef}
           className="grid"
+          role="grid"
+          aria-labelledby="draw-heading"
+          aria-rowcount={size}
+          aria-colcount={size}
           style={{
             ['--size' as string]: size,
             ['--cols' as string]: size,
@@ -125,12 +200,21 @@ export default function App() {
         >
           {grid.map((row, r) =>
             row.map((cell, c) => (
-              <div
+              <button
                 key={`${r}-${c}`}
+                type="button"
+                role="gridcell"
+                aria-pressed={cell}
+                aria-label={`Row ${r + 1}, column ${c + 1}, ${cell ? 'filled' : 'empty'}`}
+                data-r={r}
+                data-c={c}
+                tabIndex={focus.r === r && focus.c === c ? 0 : -1}
                 className={`cell ${cell ? 'on' : ''}`}
                 style={cell ? edgeStyle(grid, r, c) : undefined}
                 onPointerDown={handlePointerDown(r, c)}
                 onPointerEnter={handlePointerEnter(r, c)}
+                onFocus={() => setFocus({ r, c })}
+                onKeyDown={handleCellKeyDown(r, c)}
               />
             ))
           )}
@@ -168,6 +252,8 @@ function VariantView({ label, grid }: { label: string; grid: Grid }) {
     <figure className="variant">
       <div
         className="mini-grid"
+        role="img"
+        aria-label={`${label}, ${rows} by ${cols}`}
         style={{
           ['--cols' as string]: cols,
           ['--rows' as string]: rows,
@@ -179,6 +265,7 @@ function VariantView({ label, grid }: { label: string; grid: Grid }) {
           row.map((cell, c) => (
             <div
               key={`${r}-${c}`}
+              aria-hidden="true"
               className={`cell ${cell ? 'on' : ''}`}
               style={cell ? edgeStyle(grid, r, c) : undefined}
             />
