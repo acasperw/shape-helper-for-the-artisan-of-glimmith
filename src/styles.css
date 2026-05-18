@@ -419,6 +419,33 @@ figcaption {
   --glass-red-4: #8fc6ea;
 }
 
+/* Piece C gets a stained-glass green for 3-copy self-fit clusters. */
+.cell.on.piece-c {
+  --glass-red-1: #8ed18a;
+  --glass-red-2: #3e8b3d;
+  --glass-red-3: #225d22;
+  --glass-red-4: #a8dca0;
+}
+
+/* Piece D gets a stained-glass amber/gold for 4-copy self-fit clusters. */
+.cell.on.piece-d {
+  --glass-red-1: #f5d27a;
+  --glass-red-2: #c79a2b;
+  --glass-red-3: #8a6a16;
+  --glass-red-4: #f2e0a4;
+}
+
+/* "Forms a rectangle" badge on self-cluster figcaptions. */
+.rect-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent, #4a7);
+  color: white;
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
 /* ---------- Tiling section ---------- */
 .tiling>details>summary {
   list-style: none;

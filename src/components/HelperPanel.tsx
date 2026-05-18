@@ -1,25 +1,25 @@
 import { useEffect, useDeferredValue, useMemo, useState } from 'react';
 import type { Grid } from '../shape';
 import { emptyGrid, generateVariants, resizeGrid } from '../shape';
-import { findSelfFits, type SelfFitResult } from '../selfFit';
+import {
+  findSelfClusters,
+  type SelfClustersResult,
+  SELF_CLUSTER_MIN_N,
+  SELF_CLUSTER_MAX_N,
+} from '../selfFit';
 import { tileRegion } from '../tile';
 import type { Variant } from '../shape';
 import { useSplits } from '../hooks/useSplits';
+import { useSelfClusters } from '../hooks/useSelfClusters';
 import { DrawableGrid } from './DrawableGrid';
 import { VariantView } from './VariantView';
 import { SplitView } from './SplitView';
-import { SelfFitView } from './SelfFitView';
+import { SelfClusterView } from './SelfClusterView';
 import { TilingView } from './TilingView';
 
 /** Stable empty values reused while the Helper tab is hidden so identity-based
  *  memoization downstream stays cheap. */
 const EMPTY_VARIANTS: Variant[] = [];
-const EMPTY_SELF_FITS: SelfFitResult = {
-  fits: [],
-  totalCells: 0,
-  disconnected: false,
-  empty: true,
-};
 
 type HelperPanelProps = {
   active: boolean;
@@ -80,32 +80,67 @@ export function HelperPanel({
     () => (active ? generateVariants(pieceGrid) : EMPTY_VARIANTS),
     [active, pieceGrid],
   );
-  const selfFits = useMemo(
-    () => (active ? findSelfFits(deferredPiece) : EMPTY_SELF_FITS),
-    [active, deferredPiece],
+
+  // Self-fit / N-copy clusters: a single unified section. N=2 runs on the
+  // main thread (cheap, instant feedback while drawing); N≥3 goes through a
+  // worker since the search grows like P^(N-1).
+  const [clusterN, setClusterN] = useState<number>(2);
+  const [rectanglesOnly, setRectanglesOnly] = useState(false);
+
+  const syncClusters = useMemo(
+    () => (active && clusterN === 2 ? findSelfClusters(deferredPiece, 2) : null),
+    [active, clusterN, deferredPiece],
   );
+  // The worker hook accepts a fallback N when we're on the sync path so we
+  // don't accidentally request N=2 from the worker.
+  const { result: workerClusters, pending: workerPending } = useSelfClusters(
+    active && clusterN >= 3 ? pieceGrid : null,
+    clusterN >= 3 ? clusterN : 3,
+  );
+
+  const clustersResult: SelfClustersResult | null =
+    clusterN === 2 ? syncClusters : workerClusters;
+  const clustersPending = clusterN >= 3 && workerPending;
+
   const { result: splitsResult, pending: splitsPending } = useSplits(active ? pieceGrid : null);
 
   const [showAllSplits, setShowAllSplits] = useState(false);
   const SELF_FIT_TIERS_DEFAULT = 3;
-  const [selfFitTiers, setSelfFitTiers] = useState(SELF_FIT_TIERS_DEFAULT);
+  const [clusterTiers, setClusterTiers] = useState(SELF_FIT_TIERS_DEFAULT);
 
-  // Reset the "show top X tiers" slider whenever the drawn shape changes, so
-  // adding cells doesn't leave the user stuck on a narrow tier selection from
-  // the previous shape.
+  // Reset the "show top X tiers" slider whenever the drawn shape or N
+  // changes — otherwise the user can get stuck on a narrow tier from a
+  // previous shape.
   useEffect(() => {
-    setSelfFitTiers(SELF_FIT_TIERS_DEFAULT);
-  }, [deferredPiece]);
+    setClusterTiers(SELF_FIT_TIERS_DEFAULT);
+  }, [deferredPiece, clusterN]);
 
-  const selfFitDistinctTiers = useMemo(
-    () => Array.from(new Set(selfFits.fits.map((f) => f.contactEdges))).sort((a, b) => b - a),
-    [selfFits],
+  // Apply the "rectangles only" filter first, then derive tiers from the
+  // filtered set so the tier slider stays meaningful when filtering is on.
+  const clustersAll = clustersResult?.clusters ?? [];
+  const clustersFilteredByRect = useMemo(
+    () => (rectanglesOnly ? clustersAll.filter((c) => c.isRectangle) : clustersAll),
+    [clustersAll, rectanglesOnly],
   );
-  const effectiveSelfFitTiers = Math.min(selfFitTiers, Math.max(1, selfFitDistinctTiers.length));
-  const selfFitCutoff = selfFitDistinctTiers[effectiveSelfFitTiers - 1] ?? -Infinity;
-  const displayedSelfFits = useMemo(
-    () => selfFits.fits.filter((f) => f.contactEdges >= selfFitCutoff),
-    [selfFits, selfFitCutoff],
+  const clusterDistinctTiers = useMemo(
+    () =>
+      Array.from(new Set(clustersFilteredByRect.map((c) => c.contactEdges))).sort(
+        (a, b) => b - a,
+      ),
+    [clustersFilteredByRect],
+  );
+  const effectiveClusterTiers = Math.min(
+    clusterTiers,
+    Math.max(1, clusterDistinctTiers.length),
+  );
+  const clusterCutoff = clusterDistinctTiers[effectiveClusterTiers - 1] ?? -Infinity;
+  const displayedClusters = useMemo(
+    () => clustersFilteredByRect.filter((c) => c.contactEdges >= clusterCutoff),
+    [clustersFilteredByRect, clusterCutoff],
+  );
+  const rectangleCount = useMemo(
+    () => clustersAll.filter((c) => c.isRectangle).length,
+    [clustersAll],
   );
 
   // A piece of one cell isn't a useful tiling answer, so hide those.
@@ -213,47 +248,102 @@ export function HelperPanel({
         )}
       </section>
 
-      <section className="self-fits" aria-labelledby="self-fits-heading">
+      <section className="self-fits" aria-labelledby="self-fits-heading" aria-busy={clustersPending}>
         <h2 id="self-fits-heading">
           Fits with itself{' '}
-          {!selfFits.empty && !selfFits.disconnected ? `(${selfFits.fits.length})` : null}
+          {clustersResult && !clustersResult.empty && !clustersResult.disconnected && !clustersResult.tooLarge
+            ? `(${clustersResult.clusters.length}${clustersResult.aborted ? '+' : ''}${rectangleCount > 0 ? `, ${rectangleCount} rectangle${rectangleCount === 1 ? '' : 's'}` : ''})`
+            : null}
         </h2>
         <p className="hint">
-          Every way a single rotated or flipped copy of the drawn shape can sit snugly against the original (sharing
-          at least two edges, no overlap). Original is shown in red, the placed copy in blue.
+          Every way {clusterN === 2 ? 'a single rotated or flipped copy' : `${clusterN - 1} more rotated or flipped copies`} of the drawn shape can sit snugly against the original
+          {clusterN >= 3 ? ' to form an N-piece cluster' : ''} (each copy shares ≥ 2 edges with what's already
+          there, no overlaps). Original in red, copies in blue{clusterN >= 3 ? ', green' : ''}
+          {clusterN >= 4 ? ', gold' : ''}. Clusters whose union exactly fills a rectangle are flagged.
         </p>
-        {selfFitDistinctTiers.length > 1 ? (
+        <div className="splits-controls">
+          <label>
+            Copies (N): <strong aria-live="polite">{clusterN}</strong>{' '}
+            <input
+              type="range"
+              min={SELF_CLUSTER_MIN_N}
+              max={SELF_CLUSTER_MAX_N}
+              value={clusterN}
+              aria-valuetext={`${clusterN} copies`}
+              onChange={(e) => setClusterN(Number(e.target.value))}
+            />
+          </label>{' '}
+          <label>
+            <input
+              type="checkbox"
+              checked={rectanglesOnly}
+              onChange={(e) => setRectanglesOnly(e.target.checked)}
+            />{' '}
+            Rectangles only
+          </label>
+        </div>
+        {clusterDistinctTiers.length > 1 ? (
           <div className="splits-controls">
             <label>
-              Show top <strong aria-live="polite">{effectiveSelfFitTiers}</strong> of{' '}
-              {selfFitDistinctTiers.length} shared-edge tier{selfFitDistinctTiers.length === 1 ? '' : 's'}{' '}
+              Show top <strong aria-live="polite">{effectiveClusterTiers}</strong> of{' '}
+              {clusterDistinctTiers.length} shared-edge tier
+              {clusterDistinctTiers.length === 1 ? '' : 's'}{' '}
               <input
                 type="range"
                 min={1}
-                max={selfFitDistinctTiers.length}
-                value={effectiveSelfFitTiers}
-                aria-valuetext={`Top ${effectiveSelfFitTiers} of ${selfFitDistinctTiers.length} tiers (≥ ${selfFitCutoff} shared edges)`}
-                onChange={(e) => setSelfFitTiers(Number(e.target.value))}
+                max={clusterDistinctTiers.length}
+                value={effectiveClusterTiers}
+                aria-valuetext={`Top ${effectiveClusterTiers} of ${clusterDistinctTiers.length} tiers (≥ ${clusterCutoff} shared edges)`}
+                onChange={(e) => setClusterTiers(Number(e.target.value))}
               />{' '}
               <span className="dims">
-                ({displayedSelfFits.length} of {selfFits.fits.length} shown, ≥ {selfFitCutoff} edge
-                {selfFitCutoff === 1 ? '' : 's'})
+                ({displayedClusters.length} of {clustersFilteredByRect.length} shown, ≥ {clusterCutoff} edge
+                {clusterCutoff === 1 ? '' : 's'})
               </span>
             </label>
           </div>
         ) : null}
-        {selfFits.empty ? (
+        {clustersPending ? (
+          <p className="hint" role="status">
+            Computing {clusterN}-copy clusters…
+          </p>
+        ) : !clustersResult || clustersResult.empty ? (
           <p className="hint">Draw a shape to explore self-fitting placements.</p>
-        ) : selfFits.disconnected ? (
+        ) : clustersResult.disconnected ? (
           <p className="hint">Self-fit analysis only works on a single connected shape.</p>
-        ) : selfFits.fits.length === 0 ? (
-          <p className="hint">This shape cannot fit snugly against a rotated or flipped copy of itself.</p>
+        ) : clustersResult.tooLarge ? (
+          <p className="hint">
+            Shape has {clustersResult.totalCells} cells — {clusterN}-copy analysis is capped at{' '}
+            {clustersResult.maxCells} cells to keep the browser responsive.
+          </p>
+        ) : clustersResult.clusters.length === 0 ? (
+          <p className="hint">
+            {clusterN === 2
+              ? 'This shape cannot fit snugly against a rotated or flipped copy of itself.'
+              : `No ${clusterN}-copy cluster found where each new copy shares ≥ 2 edges with the others.`}
+          </p>
+        ) : displayedClusters.length === 0 ? (
+          <p className="hint">
+            {rectanglesOnly
+              ? `No rectangular ${clusterN}-copy cluster found. Uncheck "Rectangles only" to see other arrangements.`
+              : 'No clusters match the current filter.'}
+          </p>
         ) : (
-          <div className="split-list">
-            {displayedSelfFits.map((f, i) => (
-              <SelfFitView key={`${f.variantLabel}-${f.contactEdges}-${i}`} fit={f} />
-            ))}
-          </div>
+          <>
+            {clustersResult.aborted ? (
+              <p className="hint">
+                Search hit its iteration budget — there may be more clusters than shown.
+              </p>
+            ) : null}
+            <div className="split-list">
+              {displayedClusters.map((c, i) => (
+                <SelfClusterView
+                  key={`${i}-${c.contactEdges}-${c.pieces.map((p) => p.label).join('|')}`}
+                  cluster={c}
+                />
+              ))}
+            </div>
+          </>
         )}
       </section>
 

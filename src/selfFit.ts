@@ -2,26 +2,6 @@ import { cropToBounds, type Grid } from './shape';
 
 export type Cell = { r: number; c: number };
 
-export type SelfFit = {
-  /** Cells of the original shape, normalized so its bounding box starts at (0,0). */
-  a: Cell[];
-  /** Cells of the rotated/flipped copy placed next to A, in the same coord space as A. */
-  b: Cell[];
-  /** Label of which dihedral variant of A is used for B. */
-  variantLabel: string;
-  /** Number of unit edges shared between A and B (a rough "snugness" score). */
-  contactEdges: number;
-};
-
-export type SelfFitResult = {
-  fits: SelfFit[];
-  totalCells: number;
-  /** Drawn shape is not 4-connected — analysis only defined for one connected piece. */
-  disconnected: boolean;
-  /** No cells drawn. */
-  empty: boolean;
-};
-
 type CellTransform = (cell: Cell, h: number, w: number) => Cell;
 
 const TRANSFORMS: { label: string; t: CellTransform }[] = [
@@ -91,35 +71,101 @@ function isConnected(cells: Cell[]): boolean {
   return seen.size === cells.length;
 }
 
+/* ---------- N-copy clusters (N ≥ 2) ---------- */
+
+export type SelfClusterPiece = {
+  /** Cells of this placed copy, in the same coordinate frame as A. */
+  cells: Cell[];
+  /** Which dihedral image of A this copy uses ("Original", "Rotated 90°", …). */
+  label: string;
+};
+
+export type SelfCluster = {
+  /** Cells of the original A, normalized so its bbox starts at (0,0). */
+  a: Cell[];
+  /** The N-1 placed copies, in the order they were found. */
+  pieces: SelfClusterPiece[];
+  /** Total unit edges shared between any two pieces in the cluster. */
+  contactEdges: number;
+  /** True iff the cluster's union of cells exactly fills its bounding box. */
+  isRectangle: boolean;
+};
+
+export type SelfClustersResult = {
+  /** Number of copies in each returned cluster (including the original). */
+  n: number;
+  clusters: SelfCluster[];
+  totalCells: number;
+  disconnected: boolean;
+  empty: boolean;
+  /** Shape is bigger than the cap we apply for this N. */
+  tooLarge: boolean;
+  maxCells: number;
+  /** Search aborted because it hit its iteration budget. */
+  aborted: boolean;
+};
+
+/** Cell-count caps per cluster size — tighter for larger N because the
+ *  search grows roughly like P^(N-1) where P is the number of valid
+ *  single-copy placements against A. */
+const SELF_CLUSTER_CAPS: Record<number, { maxCells: number; budget: number }> = {
+  2: { maxCells: 30, budget: 2_000_000 },
+  3: { maxCells: 16, budget: 6_000_000 },
+  4: { maxCells: 12, budget: 14_000_000 },
+};
+
+export const SELF_CLUSTER_MIN_N = 2;
+export const SELF_CLUSTER_MAX_N = 4;
+
 /**
- * Find every placement of a rotated/flipped copy of the drawn shape that fits
- * snugly against the original (shares at least one edge, no overlap).
+ * Find every way (N-1) rotated/flipped copies of the drawn shape can sit
+ * snugly against the original to form an N-piece cluster.
  *
- * Two placements are considered the same when they are related by a self-symmetry
- * of the drawn shape (e.g., placing a copy on the left vs. the right of a
- * left-right symmetric shape).
+ * Snugness rule: each newly placed copy must share ≥ 2 unit edges with the
+ * partial cluster built so far, and no two copies may overlap.
+ *
+ * Duplicates are collapsed by canonicalizing the unordered set of placed
+ * copies under A's self-symmetries (so mirror-image clusters merge when A
+ * itself is symmetric).
  */
-export function findSelfFits(grid: Grid): SelfFitResult {
+export function findSelfClusters(grid: Grid, n: number): SelfClustersResult {
+  const cfg = SELF_CLUSTER_CAPS[n];
+  if (!cfg) {
+    throw new Error(`findSelfClusters: unsupported n=${n} (expected 2–4)`);
+  }
+  const { maxCells, budget } = cfg;
+
+  const empty = (over: Partial<SelfClustersResult>): SelfClustersResult => ({
+    n,
+    clusters: [],
+    totalCells: 0,
+    disconnected: false,
+    empty: false,
+    tooLarge: false,
+    maxCells,
+    aborted: false,
+    ...over,
+  });
+
   const cropped = cropToBounds(grid);
-  if (!cropped) return { fits: [], totalCells: 0, disconnected: false, empty: true };
+  if (!cropped) return empty({ empty: true });
 
   const baseRaw = cellsOf(cropped);
   if (!isConnected(baseRaw)) {
-    return { fits: [], totalCells: baseRaw.length, disconnected: true, empty: false };
+    return empty({ totalCells: baseRaw.length, disconnected: true });
+  }
+  if (baseRaw.length > maxCells) {
+    return empty({ totalCells: baseRaw.length, tooLarge: true });
   }
 
-  const baseCells = baseRaw; // already in [0,H) x [0,W) frame.
+  const baseCells = baseRaw;
   const baseKey = key(baseCells);
-  const baseSet = new Set<number>();
-  for (const c of baseCells) baseSet.add(pack(c.r, c.c));
   const H = cropped.length;
   const W = cropped[0].length;
 
-  // Self-symmetries of the drawn shape, expressed as functions that map any
-  // cell in the original frame to its image (already incorporating the
-  // re-normalization translation, so applying to baseCells reproduces baseCells).
-  const selfSyms: ((cells: Cell[]) => Cell[])[] = [];
-  // Variant cell-lists for B, one per *distinct* dihedral image of A.
+  // Self-symmetries of A: maps from cell-list in A's frame back into A's frame.
+  const selfSyms: ((cells: readonly Cell[]) => Cell[])[] = [];
+  // Distinct dihedral images of A — the catalog of placeable copies.
   const variantCells: { label: string; cells: Cell[] }[] = [];
   const variantKeys = new Set<string>();
 
@@ -140,24 +186,28 @@ export function findSelfFits(grid: Grid): SelfFitResult {
       variantCells.push({ label: tr.label, cells: normed });
     }
   }
+  if (selfSyms.length === 0) selfSyms.push((cells) => cells.map((c) => ({ r: c.r, c: c.c })));
 
-  if (selfSyms.length === 0) selfSyms.push((cells) => cells);
-
-  const fits: SelfFit[] = [];
-  const seen = new Set<string>();
-
-  for (const v of variantCells) {
-    let ch = 0;
-    let cw = 0;
+  const variantInfo = variantCells.map((v) => {
+    let h = 0, w = 0;
     for (const { r, c } of v.cells) {
-      if (r + 1 > ch) ch = r + 1;
-      if (c + 1 > cw) cw = c + 1;
+      if (r + 1 > h) h = r + 1;
+      if (c + 1 > w) w = c + 1;
     }
+    return { ...v, h, w };
+  });
 
-    // Translate B's (0,0) to (dr, dc). Range chosen so B's bbox is allowed to
-    // touch A's bbox on any side.
-    for (let dr = -ch; dr <= H; dr++) {
-      for (let dc = -cw; dc <= W; dc++) {
+  const baseSet = new Set<number>();
+  for (const c of baseCells) baseSet.add(pack(c.r, c.c));
+
+  type Placement = { label: string; cells: Cell[] };
+
+  // Enumerate every placement of one copy that at least touches A (we'll
+  // re-check "≥2 edges with current cluster" at each search step).
+  const placementsVsA: Placement[] = [];
+  for (const v of variantInfo) {
+    for (let dr = -v.h; dr <= H; dr++) {
+      for (let dc = -v.w; dc <= W; dc++) {
         let overlap = false;
         let contact = 0;
         for (const { r, c } of v.cells) {
@@ -169,30 +219,111 @@ export function findSelfFits(grid: Grid): SelfFitResult {
           if (baseSet.has(pack(nr, nc - 1))) contact++;
           if (baseSet.has(pack(nr, nc + 1))) contact++;
         }
-        // Require at least two shared edges so the copy actually nests against
-        // the original rather than just touching it along a single edge.
-        if (overlap || contact < 2) continue;
-
-        const placed = v.cells.map(({ r, c }) => ({ r: r + dr, c: c + dc }));
-
-        // Canonicalize by picking the lex-min key of σ(placed) over all
-        // self-symmetries σ of A.
-        let canon: string | null = null;
-        for (const sym of selfSyms) {
-          const k = key(sym(placed));
-          if (canon === null || k < canon) canon = k;
-        }
-        if (canon === null || seen.has(canon)) continue;
-        seen.add(canon);
-
-        fits.push({ a: baseCells, b: placed, variantLabel: v.label, contactEdges: contact });
+        if (overlap || contact === 0) continue;
+        const cells = v.cells.map(({ r, c }) => ({ r: r + dr, c: c + dc }));
+        placementsVsA.push({ label: v.label, cells });
       }
     }
   }
 
-  // Sort: most "snug" first (highest contact edge count), then by variant label
-  // so identical-orientation placements group together.
-  fits.sort((x, y) => y.contactEdges - x.contactEdges || x.variantLabel.localeCompare(y.variantLabel));
+  const clusters: SelfCluster[] = [];
+  const seen = new Set<string>();
+  const unionSet = new Set<number>(baseSet);
+  const picked: Placement[] = [];
+  let iters = 0;
+  let aborted = false;
 
-  return { fits, totalCells: baseCells.length, disconnected: false, empty: false };
+  const emit = (contactSum: number) => {
+    // Canonicalize: lex-min over self-symmetries of A of the sorted
+    // multi-set of piece keys. (Order of A's self-symmetries swaps cluster
+    // pieces that are mirror images of each other under A's symmetry.)
+    let canon: string | null = null;
+    for (const sym of selfSyms) {
+      const ks: string[] = [];
+      for (const p of picked) ks.push(key(sym(p.cells)));
+      ks.sort();
+      const s = ks.join('#');
+      if (canon === null || s < canon) canon = s;
+    }
+    if (canon === null || seen.has(canon)) return;
+    seen.add(canon);
+
+    // Bounding box of the union — used for the rectangle predicate.
+    let mnR = Infinity, mnC = Infinity, mxR = -Infinity, mxC = -Infinity;
+    for (const { r, c } of baseCells) {
+      if (r < mnR) mnR = r; if (r > mxR) mxR = r;
+      if (c < mnC) mnC = c; if (c > mxC) mxC = c;
+    }
+    for (const p of picked) {
+      for (const { r, c } of p.cells) {
+        if (r < mnR) mnR = r; if (r > mxR) mxR = r;
+        if (c < mnC) mnC = c; if (c > mxC) mxC = c;
+      }
+    }
+    const rows = mxR - mnR + 1;
+    const cols = mxC - mnC + 1;
+    const unionCells = baseCells.length * n; // all pieces same size, disjoint.
+    const isRectangle = rows * cols === unionCells;
+
+    clusters.push({
+      a: baseCells,
+      pieces: picked.map((p) => ({ cells: p.cells, label: p.label })),
+      contactEdges: contactSum,
+      isRectangle,
+    });
+  };
+
+  // Returns false if the search hit its budget and should bail entirely.
+  const recurse = (depth: number, contactSum: number): boolean => {
+    if (depth === n - 1) {
+      emit(contactSum);
+      return true;
+    }
+    for (let i = 0; i < placementsVsA.length; i++) {
+      if (++iters > budget) { aborted = true; return false; }
+      const p = placementsVsA[i];
+      let overlap = false;
+      let contact = 0;
+      for (const { r, c } of p.cells) {
+        const k = pack(r, c);
+        if (unionSet.has(k)) { overlap = true; break; }
+        if (unionSet.has(pack(r - 1, c))) contact++;
+        if (unionSet.has(pack(r + 1, c))) contact++;
+        if (unionSet.has(pack(r, c - 1))) contact++;
+        if (unionSet.has(pack(r, c + 1))) contact++;
+      }
+      if (overlap || contact < 2) continue;
+      for (const { r, c } of p.cells) unionSet.add(pack(r, c));
+      picked.push(p);
+      const ok = recurse(depth + 1, contactSum + contact);
+      picked.pop();
+      for (const { r, c } of p.cells) unionSet.delete(pack(r, c));
+      if (!ok) return false;
+    }
+    return true;
+  };
+
+  recurse(0, 0);
+
+  // Sort: rectangles first, then snugger (more contact edges), then by labels.
+  clusters.sort((x, y) => {
+    if (x.isRectangle !== y.isRectangle) return x.isRectangle ? -1 : 1;
+    if (x.contactEdges !== y.contactEdges) return y.contactEdges - x.contactEdges;
+    for (let i = 0; i < x.pieces.length; i++) {
+      const cmp = x.pieces[i].label.localeCompare(y.pieces[i].label);
+      if (cmp !== 0) return cmp;
+    }
+    return 0;
+  });
+
+  return {
+    n,
+    clusters,
+    totalCells: baseCells.length,
+    disconnected: false,
+    empty: false,
+    tooLarge: false,
+    maxCells,
+    aborted,
+  };
 }
