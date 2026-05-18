@@ -550,14 +550,14 @@ export default function App() {
 
           <section className="splits" aria-labelledby="splits-heading" aria-busy={splitsPending}>
             <h2 id="splits-heading">
-              Shapes that tile into this one{' '}
+              Two shapes that tile into this one{' '}
               {splitsResult && !splitsResult.tooLarge && !splitsResult.disconnected && splitsResult.totalCells >= 4
                 ? `(${displayedSplits.length}${splitsResult.aborted ? '+' : ''})`
                 : null}
             </h2>
             <p className="hint">
-              A single piece that, placed twice (with rotations or flips), exactly
-              fills the drawn shape. The two copies are shown in red and blue.
+              Two shapes that, placed together (with rotations or flips), exactly
+              fill the drawn shape. The two copies are shown in red and blue.
             </p>
             <div className="splits-controls">
               <label>
