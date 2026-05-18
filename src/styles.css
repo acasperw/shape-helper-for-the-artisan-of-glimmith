@@ -24,9 +24,13 @@
   --accent: #a01a1f;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body, #root {
+html,
+body,
+#root {
   margin: 0;
   padding: 0;
   min-height: 100%;
@@ -48,6 +52,7 @@ header h1 {
   color: var(--ink);
   text-shadow: 0 1px 0 rgba(255, 240, 200, 0.5);
 }
+
 .subtitle {
   margin: 4px 0 0;
   color: var(--muted);
@@ -99,7 +104,11 @@ h2 {
   gap: 10px;
   color: var(--ink-soft);
 }
-.controls input[type="range"] { width: 200px; accent-color: var(--accent); }
+
+.controls input[type="range"] {
+  width: 200px;
+  accent-color: var(--accent);
+}
 
 button {
   background: linear-gradient(180deg, #b8331e 0%, #8a1f15 100%);
@@ -114,8 +123,14 @@ button {
     0 1px 0 rgba(255, 200, 170, 0.35) inset,
     0 2px 4px rgba(40, 10, 5, 0.35);
 }
-button:hover { filter: brightness(1.08); }
-button:active { transform: translateY(1px); }
+
+button:hover {
+  filter: brightness(1.08);
+}
+
+button:active {
+  transform: translateY(1px);
+}
 
 /* ---------- Drawing canvas + grid ---------- */
 
@@ -124,6 +139,7 @@ button:active { transform: translateY(1px); }
   flex-direction: column;
   align-items: center;
 }
+
 .draw-area h2,
 .draw-area .hint {
   align-self: flex-start;
@@ -172,7 +188,11 @@ button.cell {
   box-shadow: none;
   cursor: pointer;
 }
-button.cell:focus { outline: none; }
+
+button.cell:focus {
+  outline: none;
+}
+
 button.cell:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -187,10 +207,10 @@ button.cell:focus-visible {
 .cell.on {
   background-image:
     /* bright highlights scattered across the grid */
-    radial-gradient(ellipse 6% 5% at  8% 12%, rgba(255, 230, 210, 0.55), transparent 70%),
-    radial-gradient(ellipse 5% 4% at 28%  6%, rgba(255, 230, 210, 0.45), transparent 70%),
+    radial-gradient(ellipse 6% 5% at 8% 12%, rgba(255, 230, 210, 0.55), transparent 70%),
+    radial-gradient(ellipse 5% 4% at 28% 6%, rgba(255, 230, 210, 0.45), transparent 70%),
     radial-gradient(ellipse 7% 5% at 52% 18%, rgba(255, 220, 200, 0.45), transparent 70%),
-    radial-gradient(ellipse 4% 4% at 74%  9%, rgba(255, 220, 200, 0.40), transparent 70%),
+    radial-gradient(ellipse 4% 4% at 74% 9%, rgba(255, 220, 200, 0.40), transparent 70%),
     radial-gradient(ellipse 6% 5% at 92% 22%, rgba(255, 220, 200, 0.40), transparent 70%),
     radial-gradient(ellipse 5% 5% at 14% 38%, rgba(255, 220, 200, 0.35), transparent 70%),
     radial-gradient(ellipse 6% 5% at 44% 46%, rgba(255, 220, 200, 0.35), transparent 70%),
@@ -217,8 +237,7 @@ button.cell:focus-visible {
   background-size:
     calc(var(--cell-size) * var(--cols, 10)) calc(var(--cell-size) * var(--rows, 10));
   background-position:
-    calc(var(--col, 0) * var(--cell-size) * -1)
-    calc(var(--row, 0) * var(--cell-size) * -1);
+    calc(var(--col, 0) * var(--cell-size) * -1) calc(var(--row, 0) * var(--cell-size) * -1);
   background-repeat: no-repeat;
   border-color: transparent;
 }
@@ -249,22 +268,24 @@ button.cell:focus-visible {
     linear-gradient(112deg, transparent 14%, rgba(40, 8, 5, 0.22) 14.6%, transparent 15.2%),
     linear-gradient(112deg, transparent 41%, rgba(40, 8, 5, 0.18) 41.5%, transparent 42%),
     linear-gradient(112deg, transparent 73%, rgba(40, 8, 5, 0.18) 73.5%, transparent 74%),
-    linear-gradient( 28deg, transparent 22%, rgba(40, 8, 5, 0.18) 22.5%, transparent 23%),
-    linear-gradient( 28deg, transparent 58%, rgba(40, 8, 5, 0.16) 58.5%, transparent 59%),
-    linear-gradient( 28deg, transparent 86%, rgba(40, 8, 5, 0.14) 86.5%, transparent 87%),
+    linear-gradient(28deg, transparent 22%, rgba(40, 8, 5, 0.18) 22.5%, transparent 23%),
+    linear-gradient(28deg, transparent 58%, rgba(40, 8, 5, 0.16) 58.5%, transparent 59%),
+    linear-gradient(28deg, transparent 86%, rgba(40, 8, 5, 0.14) 86.5%, transparent 87%),
     linear-gradient(165deg, transparent 35%, rgba(40, 8, 5, 0.14) 35.5%, transparent 36%),
     linear-gradient(165deg, transparent 68%, rgba(40, 8, 5, 0.14) 68.5%, transparent 69%);
   background-size:
     calc(var(--cell-size) * var(--cols, 10)) calc(var(--cell-size) * var(--rows, 10));
   background-position:
-    calc(var(--col, 0) * var(--cell-size) * -1)
-    calc(var(--row, 0) * var(--cell-size) * -1);
+    calc(var(--col, 0) * var(--cell-size) * -1) calc(var(--row, 0) * var(--cell-size) * -1);
   background-repeat: no-repeat;
 }
 
 /* Thick perimeter outline drawn via inset box-shadow, only on outer edges */
 .cell.on {
-  --et: 0; --er: 0; --eb: 0; --el: 0;
+  --et: 0;
+  --er: 0;
+  --eb: 0;
+  --el: 0;
   box-shadow:
     inset 0 calc(var(--et) * 3px) 0 0 var(--grid-line-strong),
     inset calc(var(--er) * -3px) 0 0 0 var(--grid-line-strong),
@@ -277,8 +298,11 @@ button.cell:focus-visible {
   outline-offset: -1px;
   cursor: pointer;
 }
+
 @media (hover: none) {
-  .draw-area .cell:hover { outline: none; }
+  .draw-area .cell:hover {
+    outline: none;
+  }
 }
 
 /* ---------- Variants ---------- */
@@ -315,10 +339,12 @@ button.cell:focus-visible {
   --card-inner-width: max(80px, calc(100cqi - 28px));
   --cell-size: min(var(--mini-cell-size), calc(var(--card-inner-width) / var(--cols)), calc(var(--card-inner-width) / var(--rows)));
 }
+
 .mini-grid .cell {
   width: var(--cell-size);
   height: var(--cell-size);
 }
+
 /* Thinner perimeter on mini grids */
 .mini-grid .cell.on {
   box-shadow:
@@ -333,7 +359,10 @@ figcaption {
   color: var(--muted);
   text-align: center;
 }
-.dims { opacity: 0.7; }
+
+.dims {
+  opacity: 0.7;
+}
 
 /* ---------- Splits ---------- */
 
@@ -362,12 +391,14 @@ figcaption {
   color: var(--ink-soft);
   font-size: 14px;
 }
+
 .splits-controls label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
 }
+
 .splits-controls input[type="checkbox"] {
   accent-color: var(--accent);
 }
@@ -382,7 +413,7 @@ figcaption {
 }
 
 /* ---------- Tiling section ---------- */
-.tiling > details > summary {
+.tiling>details>summary {
   list-style: none;
   cursor: pointer;
   display: flex;
@@ -390,19 +421,28 @@ figcaption {
   gap: 12px;
   flex-wrap: wrap;
 }
-.tiling > details > summary::-webkit-details-marker { display: none; }
-.tiling > details > summary::before {
+
+.tiling>details>summary::-webkit-details-marker {
+  display: none;
+}
+
+.tiling>details>summary::before {
   content: '▶';
   display: inline-block;
   transition: transform 120ms ease;
   color: var(--muted);
   font-size: 0.8em;
 }
-.tiling > details[open] > summary::before { transform: rotate(90deg); }
-.tiling > details > summary h2 {
+
+.tiling>details[open]>summary::before {
+  transform: rotate(90deg);
+}
+
+.tiling>details>summary h2 {
   margin: 0;
   display: inline;
 }
+
 .cheating-tag {
   font-style: italic;
   font-size: 13px;
@@ -417,7 +457,11 @@ figcaption {
   margin-bottom: 12px;
   color: var(--ink-soft);
 }
-.piece-controls input[type="range"] { vertical-align: middle; margin-left: 6px; }
+
+.piece-controls input[type="range"] {
+  vertical-align: middle;
+  margin-left: 6px;
+}
 
 .piece-and-result {
   display: grid;
@@ -425,9 +469,13 @@ figcaption {
   gap: 18px;
   align-items: start;
 }
+
 @media (max-width: 720px) {
-  .piece-and-result { grid-template-columns: 1fr; }
+  .piece-and-result {
+    grid-template-columns: 1fr;
+  }
 }
+
 .piece-heading {
   margin: 0 0 8px;
   font-size: 14px;
@@ -435,38 +483,68 @@ figcaption {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.piece-grid .cell { width: var(--piece-cell-size); height: var(--piece-cell-size); }
-.tiling-grid { --cell-size: var(--piece-cell-size); }
+
+.piece-grid .cell {
+  width: var(--piece-cell-size);
+  height: var(--piece-cell-size);
+}
+
+.tiling-grid {
+  --cell-size: var(--piece-cell-size);
+}
 
 /* Placement palette — each tile-N override of the red stained-glass vars. */
-.cell.on.tile-0 { /* red (default) */ }
+.cell.on.tile-0 {
+  /* red (default) */
+}
+
 .cell.on.tile-1 {
-  --glass-red-1: #6fb1e3; --glass-red-2: #2f6fb0;
-  --glass-red-3: #1a4a85; --glass-red-4: #8fc6ea;
+  --glass-red-1: #6fb1e3;
+  --glass-red-2: #2f6fb0;
+  --glass-red-3: #1a4a85;
+  --glass-red-4: #8fc6ea;
 }
+
 .cell.on.tile-2 {
-  --glass-red-1: #8ed18a; --glass-red-2: #3e8b3d;
-  --glass-red-3: #225d22; --glass-red-4: #a8dca0;
+  --glass-red-1: #8ed18a;
+  --glass-red-2: #3e8b3d;
+  --glass-red-3: #225d22;
+  --glass-red-4: #a8dca0;
 }
+
 .cell.on.tile-3 {
-  --glass-red-1: #f5d27a; --glass-red-2: #c79a2b;
-  --glass-red-3: #8a6a16; --glass-red-4: #f2e0a4;
+  --glass-red-1: #f5d27a;
+  --glass-red-2: #c79a2b;
+  --glass-red-3: #8a6a16;
+  --glass-red-4: #f2e0a4;
 }
+
 .cell.on.tile-4 {
-  --glass-red-1: #c79ade; --glass-red-2: #7a3fa6;
-  --glass-red-3: #4d2270; --glass-red-4: #d4b3e3;
+  --glass-red-1: #c79ade;
+  --glass-red-2: #7a3fa6;
+  --glass-red-3: #4d2270;
+  --glass-red-4: #d4b3e3;
 }
+
 .cell.on.tile-5 {
-  --glass-red-1: #7ed1c4; --glass-red-2: #2f8a7b;
-  --glass-red-3: #1c5a51; --glass-red-4: #a4dcd2;
+  --glass-red-1: #7ed1c4;
+  --glass-red-2: #2f8a7b;
+  --glass-red-3: #1c5a51;
+  --glass-red-4: #a4dcd2;
 }
+
 .cell.on.tile-6 {
-  --glass-red-1: #f0a96b; --glass-red-2: #c46a1c;
-  --glass-red-3: #7e3f0b; --glass-red-4: #f2c293;
+  --glass-red-1: #f0a96b;
+  --glass-red-2: #c46a1c;
+  --glass-red-3: #7e3f0b;
+  --glass-red-4: #f2c293;
 }
+
 .cell.on.tile-7 {
-  --glass-red-1: #ea96b8; --glass-red-2: #b04473;
-  --glass-red-3: #722448; --glass-red-4: #f0b8cd;
+  --glass-red-1: #ea96b8;
+  --glass-red-2: #b04473;
+  --glass-red-3: #722448;
+  --glass-red-4: #f0b8cd;
 }
 
 footer {
@@ -475,18 +553,137 @@ footer {
   color: var(--muted);
   font-size: 13px;
 }
-footer a { color: var(--accent); }
 
-@media (max-width: 980px) {
-  .variant-list, .split-list { --list-cols: 3; }
+footer a {
+  color: var(--accent);
 }
 
-@media (max-width: 720px) {
-  .variant-list, .split-list { --list-cols: 2; }
+/* ---------- Tabs ---------- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 18px;
+  border-bottom: 2px solid var(--panel-border);
+}
+
+.tab {
+  background: linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+  color: var(--ink-soft);
+  border: 1px solid var(--panel-border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 18px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: none;
+  position: relative;
+  top: 1px;
+}
+
+.tab:hover {
+  filter: brightness(1.04);
+}
+
+.tab.active {
+  background: linear-gradient(180deg, #fbeecd 0%, #efdcad 100%);
+  color: var(--ink);
+  border-bottom: 2px solid #fbeecd;
+  z-index: 1;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Catalog ---------- */
+.catalog {
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(255, 250, 230, 0.6), transparent 60%),
+    radial-gradient(ellipse at 80% 90%, rgba(160, 120, 70, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 240, 200, 0.6) inset,
+    0 0 0 1px rgba(255, 240, 200, 0.25) inset,
+    0 6px 18px rgba(40, 25, 10, 0.25);
+}
+
+.catalog-controls {
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.catalog-list {
+  --list-cols: 6;
+}
+
+@media (max-width: 980px) {
+  .catalog-list {
+    --list-cols: 4;
+  }
 }
 
 @media (max-width: 600px) {
-  .app { padding: 16px 12px 48px; }
-  :root { --mini-cell-size: 16px; }
-  .controls input[type="range"] { width: 140px; }
+  .catalog-list {
+    --list-cols: 3;
+  }
+}
+
+.catalog-piece {
+  /* Override default red <button> chrome — these act as variant cards. */
+  appearance: none;
+  -webkit-appearance: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.catalog-piece:hover {
+  filter: brightness(1.03);
+}
+
+.catalog-piece:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.catalog-piece-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 980px) {
+
+  .variant-list,
+  .split-list {
+    --list-cols: 3;
+  }
+}
+
+@media (max-width: 720px) {
+
+  .variant-list,
+  .split-list {
+    --list-cols: 2;
+  }
+}
+
+@media (max-width: 600px) {
+  .app {
+    padding: 16px 12px 48px;
+  }
+
+  :root {
+    --mini-cell-size: 16px;
+  }
+
+  .controls input[type="range"] {
+    width: 140px;
+  }
 }

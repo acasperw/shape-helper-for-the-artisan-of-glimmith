@@ -4,6 +4,7 @@ import type { Split, SplitsResult } from './splits';
 import type { SplitsRequest, SplitsResponse } from './splits.worker';
 import { findSelfFits, type SelfFit } from './selfFit';
 import { tileRegion, type Placement } from './tile';
+import { enumerateFreePolyominoes, type Polyomino } from './polyominoes';
 
 const MIN_SIZE = 5;
 const MAX_SIZE = 20;
@@ -11,7 +12,17 @@ const DEFAULT_SIZE = 6;
 const BOARD_MIN_SIZE = 5;
 const BOARD_MAX_SIZE = 15;
 const BOARD_DEFAULT_SIZE = 8;
+const CATALOG_MIN_SIZE = 3;
+const CATALOG_MAX_SIZE = 8;
+const CATALOG_DEFAULT_SIZE = 5;
 const STORAGE_KEY = 'shape-helper:v2';
+
+type TabId = 'helper' | 'catalog';
+
+function readTabFromHash(): TabId {
+  if (typeof window === 'undefined') return 'helper';
+  return window.location.hash === '#catalog' ? 'catalog' : 'helper';
+}
 /** Wait this long after the last edit before kicking off split analysis. */
 const SPLITS_DEBOUNCE_MS = 400;
 
@@ -233,6 +244,63 @@ export default function App() {
     [meaningfulSplits, showAllSplits],
   );
 
+  const [activeTab, setActiveTab] = useState<TabId>(() => readTabFromHash());
+
+  // Keep the active tab in sync with the URL hash so the browser back/forward
+  // buttons feel natural. Selecting a tab pushes a new history entry.
+  useEffect(() => {
+    const onPop = () => setActiveTab(readTabFromHash());
+    window.addEventListener('popstate', onPop);
+    window.addEventListener('hashchange', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      window.removeEventListener('hashchange', onPop);
+    };
+  }, []);
+
+  const goToTab = useCallback((tab: TabId) => {
+    // Read the current tab via the functional setter without mutating state,
+    // so we can decide whether a history push is needed. We deliberately keep
+    // the pushState call OUTSIDE the updater because React StrictMode (and
+    // future concurrent features) may invoke updater functions more than once,
+    // which would otherwise create duplicate history entries.
+    let shouldPush = false;
+    setActiveTab((prev) => {
+      shouldPush = prev !== tab;
+      return tab;
+    });
+    if (shouldPush) {
+      const url = `${window.location.pathname}${window.location.search}#${tab}`;
+      window.history.pushState({ tab }, '', url);
+    }
+  }, []);
+
+  /**
+   * Load a polyomino (from the catalog) into the main piece grid and switch to
+   * the helper tab. The grid is sized to fit the piece (clamped to MIN/MAX) and
+   * the piece is centered.
+   */
+  const loadPieceFromCatalog = useCallback(
+    (pieceGridIn: Grid) => {
+      const rows = pieceGridIn.length;
+      const cols = pieceGridIn[0]?.length ?? 0;
+      const needed = Math.max(rows, cols);
+      const nextSize = Math.max(MIN_SIZE, Math.min(MAX_SIZE, needed));
+      const next = emptyGrid(nextSize);
+      const offR = Math.floor((nextSize - rows) / 2);
+      const offC = Math.floor((nextSize - cols) / 2);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (pieceGridIn[r][c]) next[offR + r][offC + c] = true;
+        }
+      }
+      setPieceSize(nextSize);
+      setPieceGrid(next);
+      goToTab('helper');
+    },
+    [goToTab],
+  );
+
   return (
     <div className="app">
       <header>
@@ -240,6 +308,47 @@ export default function App() {
         <p className="subtitle">for The Artisan of Glimmith</p>
       </header>
 
+      <div className="tabs" role="tablist" aria-label="Sections">
+        <button
+          type="button"
+          role="tab"
+          id="tab-helper"
+          aria-selected={activeTab === 'helper'}
+          aria-controls="panel-helper"
+          tabIndex={activeTab === 'helper' ? 0 : -1}
+          className={`tab ${activeTab === 'helper' ? 'active' : ''}`}
+          onClick={() => goToTab('helper')}
+        >
+          Shape Helper
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-catalog"
+          aria-selected={activeTab === 'catalog'}
+          aria-controls="panel-catalog"
+          tabIndex={activeTab === 'catalog' ? 0 : -1}
+          className={`tab ${activeTab === 'catalog' ? 'active' : ''}`}
+          onClick={() => goToTab('catalog')}
+        >
+          Piece Catalog
+        </button>
+      </div>
+
+      {activeTab === 'catalog' ? (
+        <div
+          id="panel-catalog"
+          role="tabpanel"
+          aria-labelledby="tab-catalog"
+        >
+          <CatalogPanel onSelectPiece={loadPieceFromCatalog} />
+        </div>
+      ) : (
+      <div
+        id="panel-helper"
+        role="tabpanel"
+        aria-labelledby="tab-helper"
+      >
       <section className="controls">
         <label>
           Grid size:{' '}
@@ -467,6 +576,9 @@ export default function App() {
         )}
       </section>
 
+      </div>
+      )}
+
       <footer>
         <a
           href="https://github.com/acasperw/shape-helper-for-the-artisan-of-glimmith/"
@@ -475,6 +587,121 @@ export default function App() {
         >Source on GitHub</a>
       </footer>
     </div>
+  );
+}
+
+function CatalogPanel({ onSelectPiece }: { onSelectPiece: (grid: Grid) => void }) {
+  const [size, setSize] = useState(CATALOG_DEFAULT_SIZE);
+  const [computing, setComputing] = useState(false);
+  const [polyominoes, setPolyominoes] = useState<Polyomino[]>([]);
+
+  // Defer the actual enumeration to a microtask so the slider feels snappy
+  // when scrubbing across sizes (the largest case ~ size 8 is the slow one).
+  useEffect(() => {
+    setComputing(true);
+    let cancelled = false;
+    const id = window.setTimeout(() => {
+      const result = enumerateFreePolyominoes(size);
+      if (cancelled) return;
+      setPolyominoes(result);
+      setComputing(false);
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [size]);
+
+  return (
+    <section className="catalog" aria-labelledby="catalog-heading">
+      <h2 id="catalog-heading">Piece Catalog</h2>
+      <p className="hint">
+        Browse every distinct shape (up to rotation and reflection) of a given
+        size. Click a piece to load it into the Shape Helper above — the
+        browser back button will bring you back here.
+      </p>
+      <div className="controls catalog-controls">
+        <label>
+          Piece size:{' '}
+          <strong aria-live="polite">{size} cell{size === 1 ? '' : 's'}</strong>
+          <input
+            type="range"
+            min={CATALOG_MIN_SIZE}
+            max={CATALOG_MAX_SIZE}
+            value={size}
+            aria-valuetext={`${size} cells`}
+            onChange={(e) => setSize(Number(e.target.value))}
+          />
+        </label>
+        <span className="dims" aria-live="polite">
+          {computing
+            ? 'Computing…'
+            : `${polyominoes.length} distinct piece${polyominoes.length === 1 ? '' : 's'}`}
+        </span>
+      </div>
+
+      {computing ? (
+        <p className="hint" role="status">Enumerating pieces…</p>
+      ) : (
+        <div className="variant-list catalog-list">
+          {polyominoes.map((p, i) => (
+            <CatalogPiece
+              key={p.key}
+              poly={p}
+              index={i}
+              onSelect={() => onSelectPiece(p.grid)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CatalogPiece({
+  poly,
+  index,
+  onSelect,
+}: {
+  poly: Polyomino;
+  index: number;
+  onSelect: () => void;
+}) {
+  const rows = poly.grid.length;
+  const cols = poly.grid[0]?.length ?? 0;
+  return (
+    <button
+      type="button"
+      className="variant catalog-piece"
+      aria-label={`Load piece ${index + 1} (${rows} by ${cols}) into the Shape Helper`}
+      onClick={onSelect}
+    >
+      <div
+        className="mini-grid"
+        role="img"
+        aria-hidden="true"
+        style={{
+          ['--cols' as string]: cols,
+          ['--rows' as string]: rows,
+          gridTemplateColumns: `repeat(${cols}, var(--cell-size))`,
+          gridTemplateRows: `repeat(${rows}, var(--cell-size))`,
+        }}
+      >
+        {poly.grid.map((row, r) =>
+          row.map((cell, c) => (
+            <div
+              key={`${r}-${c}`}
+              aria-hidden="true"
+              className={`cell ${cell ? 'on' : ''}`}
+              style={cell ? edgeStyle(poly.grid, r, c) : undefined}
+            />
+          )),
+        )}
+      </div>
+      <span className="catalog-piece-label">
+        #{index + 1} <span className="dims">({rows}×{cols})</span>
+      </span>
+    </button>
   );
 }
 
