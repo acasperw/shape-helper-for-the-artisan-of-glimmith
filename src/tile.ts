@@ -4,8 +4,8 @@ import type { Cell } from './selfFit';
 export type Placement = Cell[];
 
 export type TilingResult = {
-  /** First exact tiling found, in placement order; null if none. */
-  solution: Placement[] | null;
+  /** All exact tilings found, in placement order; empty if none. */
+  solutions: Placement[][];
   emptyBoard: boolean;
   emptyPiece: boolean;
   /** Piece cell-count doesn't divide board cell-count, so no exact tiling exists. */
@@ -15,11 +15,14 @@ export type TilingResult = {
   tooLarge: boolean;
   /** Search ran out of iteration budget before finishing. */
   aborted: boolean;
+  /** Hit the cap on solutions returned — more may exist. */
+  truncated: boolean;
 };
 
 const MAX_BOARD_CELLS = 80;
 const MAX_PIECE_CELLS = 16;
 const ITERATION_BUDGET = 2_000_000;
+const MAX_SOLUTIONS = 50;
 
 // Pack a board cell into a single integer for fast Set lookups; board coords
 // are non-negative and small (< BOARD_MAX_SIZE).
@@ -57,20 +60,23 @@ function isConnected(cells: Cell[]): boolean {
 }
 
 /**
- * Find one way to tile every filled cell of `board` using rotated/flipped
+ * Find every way to tile every filled cell of `board` using rotated/flipped
  * copies of `piece`, with no overlap. Uses backtracking: at each step we pick
  * the lex-smallest uncovered cell and try every piece orientation whose anchor
- * (its own lex-smallest cell) covers it.
+ * (its own lex-smallest cell) covers it. Returns up to `MAX_SOLUTIONS`
+ * solutions; sets `truncated` when the cap is hit and `aborted` if the
+ * iteration budget is exhausted first.
  */
 export function tileRegion(board: Grid, piece: Grid): TilingResult {
   const base: TilingResult = {
-    solution: null,
+    solutions: [],
     emptyBoard: false,
     emptyPiece: false,
     sizeMismatch: false,
     disconnectedPiece: false,
     tooLarge: false,
     aborted: false,
+    truncated: false,
   };
 
   const boardCells = cellsOf(board);
@@ -106,9 +112,11 @@ export function tileRegion(board: Grid, piece: Grid): TilingResult {
   const sortedBoard = boardCells.slice().sort((a, b) => a.r - b.r || a.c - b.c);
   const covered = new Set<number>();
   const placements: Placement[] = [];
+  const solutions: Placement[][] = [];
 
   let iterations = 0;
   let aborted = false;
+  let truncated = false;
 
   function firstUncovered(startIdx: number): { idx: number; cell: Cell } | null {
     for (let i = startIdx; i < sortedBoard.length; i++) {
@@ -118,13 +126,21 @@ export function tileRegion(board: Grid, piece: Grid): TilingResult {
     return null;
   }
 
+  /** Returns true when the caller should stop searching entirely. */
   function solve(startIdx: number): boolean {
     if (++iterations > ITERATION_BUDGET) {
       aborted = true;
-      return false;
+      return true;
     }
     const next = firstUncovered(startIdx);
-    if (!next) return true;
+    if (!next) {
+      solutions.push(placements.map((p) => p.slice()));
+      if (solutions.length >= MAX_SOLUTIONS) {
+        truncated = true;
+        return true;
+      }
+      return false;
+    }
     const { idx, cell } = next;
 
     for (const offsets of variants) {
@@ -140,14 +156,14 @@ export function tileRegion(board: Grid, piece: Grid): TilingResult {
       if (!ok) continue;
       for (const p of placed) covered.add(pack(p.r, p.c));
       placements.push(placed);
-      if (solve(idx + 1)) return true;
+      const stop = solve(idx + 1);
       placements.pop();
       for (const p of placed) covered.delete(pack(p.r, p.c));
-      if (aborted) return false;
+      if (stop) return true;
     }
     return false;
   }
 
-  const solved = solve(0);
-  return { ...base, solution: solved ? placements.slice() : null, aborted };
+  solve(0);
+  return { ...base, solutions, aborted, truncated };
 }
