@@ -500,6 +500,10 @@ figcaption {
   --cell-size: var(--piece-cell-size);
 }
 
+.tiling-solutions {
+  --list-cols: 3;
+}
+
 /* Placement palette — each tile-N override of the red stained-glass vars. */
 .cell.on.tile-0 {
   /* red (default) */
