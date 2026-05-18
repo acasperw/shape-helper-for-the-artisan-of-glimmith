@@ -110,6 +110,13 @@ h2 {
   accent-color: var(--accent);
 }
 
+.size-readout {
+  display: inline-block;
+  min-width: 5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 button {
   background: linear-gradient(180deg, #b8331e 0%, #8a1f15 100%);
   color: #fbe7c2;
