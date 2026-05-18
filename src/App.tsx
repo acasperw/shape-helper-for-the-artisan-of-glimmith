@@ -1,10 +1,22 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { emptyGrid, generateVariants, resizeGrid, type Grid } from './shape';
 import type { Split, SplitsResult } from './splits';
 import type { SplitsRequest, SplitsResponse } from './splits.worker';
 import { findSelfFits, type SelfFit } from './selfFit';
 import { tileRegion, type Placement } from './tile';
 import { enumerateFreePolyominoes, type Polyomino } from './polyominoes';
+import type { Variant } from './shape';
+import type { SelfFitResult } from './selfFit';
+
+/** Stable empty values reused while the Helper tab is hidden so identity-based
+ *  memoization downstream stays cheap. */
+const EMPTY_VARIANTS: Variant[] = [];
+const EMPTY_SELF_FITS: SelfFitResult = {
+  fits: [],
+  totalCells: 0,
+  disconnected: false,
+  empty: true,
+};
 
 const MIN_SIZE = 5;
 const MAX_SIZE = 20;
@@ -200,6 +212,17 @@ export default function App() {
     setBoardGrid((prev) => resizeGrid(prev, clamped));
   };
   const clearBoard = () => setBoardGrid(emptyGrid(boardSize));
+
+  // Tab state lives up here so all the helper-only analyses below can be
+  // skipped while the user is on the Catalog tab.
+  const [activeTab, setActiveTab] = useState<TabId>(() => readTabFromHash());
+  const helperActive = activeTab === 'helper';
+
+  // Catalog UI state lives in App so it survives tab switches (when the user
+  // clicks a catalog piece and then presses Back, the slider should remember
+  // the size they had chosen).
+  const [catalogSize, setCatalogSize] = useState(CATALOG_DEFAULT_SIZE);
+
   // Defer heavy analyses so dragging to paint stays fluid. Variants are cheap
   // and can stay live; selfFits and tile both walk the cell-set repeatedly, so
   // we let React schedule them at lower priority and catch up when idle.
@@ -207,13 +230,21 @@ export default function App() {
   const deferredBoard = useDeferredValue(boardGrid);
   const [tilingOpen, setTilingOpen] = useState(false);
   const tiling = useMemo(
-    () => (tilingOpen ? tileRegion(deferredBoard, deferredPiece) : null),
-    [tilingOpen, deferredBoard, deferredPiece],
+    () => (helperActive && tilingOpen ? tileRegion(deferredBoard, deferredPiece) : null),
+    [helperActive, tilingOpen, deferredBoard, deferredPiece],
   );
 
-  const variants = useMemo(() => generateVariants(grid), [grid]);
-  const selfFits = useMemo(() => findSelfFits(deferredPiece), [deferredPiece]);
-  const { result: splitsResult, pending: splitsPending } = useSplits(grid);
+  const variants = useMemo(
+    () => (helperActive ? generateVariants(grid) : EMPTY_VARIANTS),
+    [helperActive, grid],
+  );
+  const selfFits = useMemo(
+    () => (helperActive ? findSelfFits(deferredPiece) : EMPTY_SELF_FITS),
+    [helperActive, deferredPiece],
+  );
+  const { result: splitsResult, pending: splitsPending } = useSplits(
+    helperActive ? grid : null,
+  );
   const [showAllSplits, setShowAllSplits] = useState(false);
   /** Number of distinct shared-edge tiers (e.g., "9 edges", "7 edges") to display. */
   const [selfFitTiers, setSelfFitTiers] = useState(3);
@@ -244,12 +275,24 @@ export default function App() {
     [meaningfulSplits, showAllSplits],
   );
 
-  const [activeTab, setActiveTab] = useState<TabId>(() => readTabFromHash());
+  // Track the latest active tab in a ref so `goToTab` can be a stable callback
+  // (no `activeTab` dependency) while still seeing the current value
+  // synchronously. We can't read it via `setActiveTab((prev) => ...)` because
+  // React schedules updaters for the next render — by the time the updater
+  // runs, our `pushState` decision has already been made.
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
 
   // Keep the active tab in sync with the URL hash so the browser back/forward
   // buttons feel natural. Selecting a tab pushes a new history entry.
   useEffect(() => {
-    const onPop = () => setActiveTab(readTabFromHash());
+    const onPop = () => {
+      const next = readTabFromHash();
+      activeTabRef.current = next;
+      setActiveTab(next);
+    };
     window.addEventListener('popstate', onPop);
     window.addEventListener('hashchange', onPop);
     return () => {
@@ -259,20 +302,11 @@ export default function App() {
   }, []);
 
   const goToTab = useCallback((tab: TabId) => {
-    // Read the current tab via the functional setter without mutating state,
-    // so we can decide whether a history push is needed. We deliberately keep
-    // the pushState call OUTSIDE the updater because React StrictMode (and
-    // future concurrent features) may invoke updater functions more than once,
-    // which would otherwise create duplicate history entries.
-    let shouldPush = false;
-    setActiveTab((prev) => {
-      shouldPush = prev !== tab;
-      return tab;
-    });
-    if (shouldPush) {
-      const url = `${window.location.pathname}${window.location.search}#${tab}`;
-      window.history.pushState({ tab }, '', url);
-    }
+    if (activeTabRef.current === tab) return;
+    activeTabRef.current = tab;
+    const url = `${window.location.pathname}${window.location.search}#${tab}`;
+    window.history.pushState({ tab }, '', url);
+    setActiveTab(tab);
   }, []);
 
   /**
@@ -341,242 +375,246 @@ export default function App() {
           role="tabpanel"
           aria-labelledby="tab-catalog"
         >
-          <CatalogPanel onSelectPiece={loadPieceFromCatalog} />
+          <CatalogPanel
+            size={catalogSize}
+            onSizeChange={setCatalogSize}
+            onSelectPiece={loadPieceFromCatalog}
+          />
         </div>
       ) : (
-      <div
-        id="panel-helper"
-        role="tabpanel"
-        aria-labelledby="tab-helper"
-      >
-      <section className="controls">
-        <label>
-          Grid size:{' '}
-          <strong aria-live="polite">
-            {size}×{size}
-          </strong>
-          <input
-            type="range"
-            min={MIN_SIZE}
-            max={MAX_SIZE}
-            value={size}
-            aria-valuetext={`${size} by ${size}`}
-            onChange={(e) => handleSizeChange(Number(e.target.value))}
-          />
-        </label>
-        <button onClick={clear} type="button">Clear</button>
-      </section>
-
-      <section className="draw-area" aria-labelledby="draw-heading">
-        <h2 id="draw-heading">Draw your shape</h2>
-        <p className="hint">Click or drag to fill/erase cells. Tab to enter the grid, arrow keys to move, Space or Enter to toggle.</p>
         <div
-          ref={gridRef}
-          className="grid"
-          role="grid"
-          aria-labelledby="draw-heading"
-          aria-rowcount={size}
-          aria-colcount={size}
-          style={{
-            ['--size' as string]: size,
-            ['--cols' as string]: size,
-            ['--rows' as string]: size,
-            gridTemplateColumns: `repeat(${size}, var(--cell-size))`,
-            gridTemplateRows: `repeat(${size}, var(--cell-size))`,
-          }}
-          onPointerUp={endPaint}
-          onPointerLeave={endPaint}
+          id="panel-helper"
+          role="tabpanel"
+          aria-labelledby="tab-helper"
         >
-          {grid.map((row, r) =>
-            row.map((cell, c) => (
-              <button
-                key={`${r}-${c}`}
-                type="button"
-                role="gridcell"
-                aria-pressed={cell}
-                aria-label={`Row ${r + 1}, column ${c + 1}, ${cell ? 'filled' : 'empty'}`}
-                data-r={r}
-                data-c={c}
-                tabIndex={focus.r === r && focus.c === c ? 0 : -1}
-                className={`cell ${cell ? 'on' : ''}`}
-                style={cell ? edgeStyle(grid, r, c) : undefined}
-                onPointerDown={handlePointerDown(r, c)}
-                onPointerEnter={handlePointerEnter(r, c)}
-                onFocus={() => setFocus({ r, c })}
-                onKeyDown={handleCellKeyDown(r, c)}
-              />
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="tiling" aria-labelledby="tiling-heading">
-        <details onToggle={(e) => setTilingOpen((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary>
-            <h2 id="tiling-heading">Tile a board with this piece</h2>
-            <span className="hint cheating-tag">Finds one full tiling of a board you draw using the piece above</span>
-          </summary>
-          <p className="hint">
-            Draw a board below and we'll try to tile every filled cell of it
-            using only rotated and flipped copies of the piece you drew above.
-            Each placement gets its own color.
-          </p>
-
-          <div className="piece-controls">
+          <section className="controls">
             <label>
-              Board grid:{' '}
-              <strong aria-live="polite">{boardSize}×{boardSize}</strong>
+              Grid size:{' '}
+              <strong aria-live="polite">
+                {size}×{size}
+              </strong>
               <input
                 type="range"
-                min={BOARD_MIN_SIZE}
-                max={BOARD_MAX_SIZE}
-                value={boardSize}
-                aria-valuetext={`${boardSize} by ${boardSize}`}
-                onChange={(e) => handleBoardSizeChange(Number(e.target.value))}
+                min={MIN_SIZE}
+                max={MAX_SIZE}
+                value={size}
+                aria-valuetext={`${size} by ${size}`}
+                onChange={(e) => handleSizeChange(Number(e.target.value))}
               />
             </label>
-            <button onClick={clearBoard} type="button">Clear board</button>
-          </div>
+            <button onClick={clear} type="button">Clear</button>
+          </section>
 
-          <div className="piece-and-result">
-            <div>
-              <h3 className="piece-heading">Board</h3>
-              <PieceGrid grid={boardGrid} setGrid={setBoardGrid} />
+          <section className="draw-area" aria-labelledby="draw-heading">
+            <h2 id="draw-heading">Draw your shape</h2>
+            <p className="hint">Click or drag to fill/erase cells. Tab to enter the grid, arrow keys to move, Space or Enter to toggle.</p>
+            <div
+              ref={gridRef}
+              className="grid"
+              role="grid"
+              aria-labelledby="draw-heading"
+              aria-rowcount={size}
+              aria-colcount={size}
+              style={{
+                ['--size' as string]: size,
+                ['--cols' as string]: size,
+                ['--rows' as string]: size,
+                gridTemplateColumns: `repeat(${size}, var(--cell-size))`,
+                gridTemplateRows: `repeat(${size}, var(--cell-size))`,
+              }}
+              onPointerUp={endPaint}
+              onPointerLeave={endPaint}
+            >
+              {grid.map((row, r) =>
+                row.map((cell, c) => (
+                  <button
+                    key={`${r}-${c}`}
+                    type="button"
+                    role="gridcell"
+                    aria-pressed={cell}
+                    aria-label={`Row ${r + 1}, column ${c + 1}, ${cell ? 'filled' : 'empty'}`}
+                    data-r={r}
+                    data-c={c}
+                    tabIndex={focus.r === r && focus.c === c ? 0 : -1}
+                    className={`cell ${cell ? 'on' : ''}`}
+                    style={cell ? edgeStyle(grid, r, c) : undefined}
+                    onPointerDown={handlePointerDown(r, c)}
+                    onPointerEnter={handlePointerEnter(r, c)}
+                    onFocus={() => setFocus({ r, c })}
+                    onKeyDown={handleCellKeyDown(r, c)}
+                  />
+                ))
+              )}
             </div>
-            <div className="tiling-result">
-              <h3 className="piece-heading">Tiling</h3>
-              <TilingView grid={boardGrid} tiling={tiling} />
-            </div>
-          </div>
-        </details>
-      </section>
+          </section>
 
-      <section className="variants">
-        <h2>Variants ({variants.length})</h2>
-        {variants.length === 0 ? (
-          <p className="hint">Draw a shape to see its rotations and flips.</p>
-        ) : (
-          <div className="variant-list">
-            {variants.map((v) => (
-              <VariantView key={v.key} label={v.label} grid={v.grid} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="self-fits" aria-labelledby="self-fits-heading">
-        <h2 id="self-fits-heading">
-          Fits with itself{' '}
-          {!selfFits.empty && !selfFits.disconnected ? `(${selfFits.fits.length})` : null}
-        </h2>
-        <p className="hint">
-          Every way a single rotated or flipped copy of the drawn shape can sit
-          snugly against the original (sharing at least two edges, no overlap).
-          Original is shown in red, the placed copy in blue.
-        </p>
-        {selfFitDistinctTiers.length > 1 ? (
-          <div className="splits-controls">
-            <label>
-              Show top{' '}
-              <strong aria-live="polite">{effectiveSelfFitTiers}</strong>{' '}
-              of {selfFitDistinctTiers.length} shared-edge tier{selfFitDistinctTiers.length === 1 ? '' : 's'}
-              {' '}
-              <input
-                type="range"
-                min={1}
-                max={selfFitDistinctTiers.length}
-                value={effectiveSelfFitTiers}
-                aria-valuetext={`Top ${effectiveSelfFitTiers} of ${selfFitDistinctTiers.length} tiers (≥ ${selfFitCutoff} shared edges)`}
-                onChange={(e) => setSelfFitTiers(Number(e.target.value))}
-              />{' '}
-              <span className="dims">
-                ({displayedSelfFits.length} of {selfFits.fits.length} shown, ≥ {selfFitCutoff} edge{selfFitCutoff === 1 ? '' : 's'})
-              </span>
-            </label>
-          </div>
-        ) : null}
-        {selfFits.empty ? (
-          <p className="hint">Draw a shape to explore self-fitting placements.</p>
-        ) : selfFits.disconnected ? (
-          <p className="hint">Self-fit analysis only works on a single connected shape.</p>
-        ) : selfFits.fits.length === 0 ? (
-          <p className="hint">This shape cannot fit snugly against a rotated or flipped copy of itself.</p>
-        ) : (
-          <div className="split-list">
-            {displayedSelfFits.map((f, i) => (
-              <SelfFitView key={i} fit={f} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="splits" aria-labelledby="splits-heading" aria-busy={splitsPending}>
-        <h2 id="splits-heading">
-          Shapes that tile into this one{' '}
-          {splitsResult && !splitsResult.tooLarge && !splitsResult.disconnected && splitsResult.totalCells >= 4
-            ? `(${displayedSplits.length}${splitsResult.aborted ? '+' : ''})`
-            : null}
-        </h2>
-        <p className="hint">
-          A single piece that, placed twice (with rotations or flips), exactly
-          fills the drawn shape. The two copies are shown in red and blue.
-        </p>
-        <div className="splits-controls">
-          <label>
-            <input
-              type="checkbox"
-              checked={showAllSplits}
-              onChange={(e) => setShowAllSplits(e.target.checked)}
-            />{' '}
-            Also show non-matching 2-piece cuts (the two pieces are different shapes)
-          </label>
-        </div>
-        {splitsPending ? (
-          <p className="hint" role="status">Computing tilings…</p>
-        ) : !splitsResult ? (
-          <p className="hint">Draw a shape with at least 4 cells to see tilings.</p>
-        ) : splitsResult.tooLarge ? (
-          <p className="hint">
-            Shape has {splitsResult.totalCells} cells — tiling analysis is
-            capped at {splitsResult.maxCells} cells to keep the browser
-            responsive.
-          </p>
-        ) : splitsResult.disconnected ? (
-          <p className="hint">
-            Tiling analysis only works on a single connected shape.
-          </p>
-        ) : splitsResult.totalCells < 4 ? (
-          <p className="hint">Draw a shape with at least 4 cells to see tilings.</p>
-        ) : displayedSplits.length === 0 ? (
-          splitsResult.aborted ? (
-            <p className="hint">
-              Search hit its iteration budget before finding a tiling. The shape may still have one.
-            </p>
-          ) : (
-            <p className="hint">
-              {showAllSplits
-                ? 'No 2-piece cuts found.'
-                : 'No single piece tiles this shape twice. Try the option above to see uneven 2-piece cuts.'}
-            </p>
-          )
-        ) : (
-          <>
-            {splitsResult.aborted ? (
+          <section className="tiling" aria-labelledby="tiling-heading">
+            <details onToggle={(e) => setTilingOpen((e.currentTarget as HTMLDetailsElement).open)}>
+              <summary>
+                <h2 id="tiling-heading">Tile a board with this piece</h2>
+                <span className="hint cheating-tag">Finds one full tiling of a board you draw using the piece above</span>
+              </summary>
               <p className="hint">
-                Showing partial results — the search hit its iteration budget
-                before exploring every possibility.
+                Draw a board below and we'll try to tile every filled cell of it
+                using only rotated and flipped copies of the piece you drew above.
+                Each placement gets its own color.
               </p>
-            ) : null}
-            <div className="split-list">
-              {displayedSplits.map((s, i) => (
-                <SplitView key={i} split={s} />
-              ))}
-            </div>
-          </>
-        )}
-      </section>
 
-      </div>
+              <div className="piece-controls">
+                <label>
+                  Board grid:{' '}
+                  <strong aria-live="polite">{boardSize}×{boardSize}</strong>
+                  <input
+                    type="range"
+                    min={BOARD_MIN_SIZE}
+                    max={BOARD_MAX_SIZE}
+                    value={boardSize}
+                    aria-valuetext={`${boardSize} by ${boardSize}`}
+                    onChange={(e) => handleBoardSizeChange(Number(e.target.value))}
+                  />
+                </label>
+                <button onClick={clearBoard} type="button">Clear board</button>
+              </div>
+
+              <div className="piece-and-result">
+                <div>
+                  <h3 className="piece-heading">Board</h3>
+                  <PieceGrid grid={boardGrid} setGrid={setBoardGrid} />
+                </div>
+                <div className="tiling-result">
+                  <h3 className="piece-heading">Tiling</h3>
+                  <TilingView grid={boardGrid} tiling={tiling} />
+                </div>
+              </div>
+            </details>
+          </section>
+
+          <section className="variants">
+            <h2>Variants ({variants.length})</h2>
+            {variants.length === 0 ? (
+              <p className="hint">Draw a shape to see its rotations and flips.</p>
+            ) : (
+              <div className="variant-list">
+                {variants.map((v) => (
+                  <VariantView key={v.key} label={v.label} grid={v.grid} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="self-fits" aria-labelledby="self-fits-heading">
+            <h2 id="self-fits-heading">
+              Fits with itself{' '}
+              {!selfFits.empty && !selfFits.disconnected ? `(${selfFits.fits.length})` : null}
+            </h2>
+            <p className="hint">
+              Every way a single rotated or flipped copy of the drawn shape can sit
+              snugly against the original (sharing at least two edges, no overlap).
+              Original is shown in red, the placed copy in blue.
+            </p>
+            {selfFitDistinctTiers.length > 1 ? (
+              <div className="splits-controls">
+                <label>
+                  Show top{' '}
+                  <strong aria-live="polite">{effectiveSelfFitTiers}</strong>{' '}
+                  of {selfFitDistinctTiers.length} shared-edge tier{selfFitDistinctTiers.length === 1 ? '' : 's'}
+                  {' '}
+                  <input
+                    type="range"
+                    min={1}
+                    max={selfFitDistinctTiers.length}
+                    value={effectiveSelfFitTiers}
+                    aria-valuetext={`Top ${effectiveSelfFitTiers} of ${selfFitDistinctTiers.length} tiers (≥ ${selfFitCutoff} shared edges)`}
+                    onChange={(e) => setSelfFitTiers(Number(e.target.value))}
+                  />{' '}
+                  <span className="dims">
+                    ({displayedSelfFits.length} of {selfFits.fits.length} shown, ≥ {selfFitCutoff} edge{selfFitCutoff === 1 ? '' : 's'})
+                  </span>
+                </label>
+              </div>
+            ) : null}
+            {selfFits.empty ? (
+              <p className="hint">Draw a shape to explore self-fitting placements.</p>
+            ) : selfFits.disconnected ? (
+              <p className="hint">Self-fit analysis only works on a single connected shape.</p>
+            ) : selfFits.fits.length === 0 ? (
+              <p className="hint">This shape cannot fit snugly against a rotated or flipped copy of itself.</p>
+            ) : (
+              <div className="split-list">
+                {displayedSelfFits.map((f, i) => (
+                  <SelfFitView key={i} fit={f} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="splits" aria-labelledby="splits-heading" aria-busy={splitsPending}>
+            <h2 id="splits-heading">
+              Shapes that tile into this one{' '}
+              {splitsResult && !splitsResult.tooLarge && !splitsResult.disconnected && splitsResult.totalCells >= 4
+                ? `(${displayedSplits.length}${splitsResult.aborted ? '+' : ''})`
+                : null}
+            </h2>
+            <p className="hint">
+              A single piece that, placed twice (with rotations or flips), exactly
+              fills the drawn shape. The two copies are shown in red and blue.
+            </p>
+            <div className="splits-controls">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showAllSplits}
+                  onChange={(e) => setShowAllSplits(e.target.checked)}
+                />{' '}
+                Also show non-matching 2-piece cuts (the two pieces are different shapes)
+              </label>
+            </div>
+            {splitsPending ? (
+              <p className="hint" role="status">Computing tilings…</p>
+            ) : !splitsResult ? (
+              <p className="hint">Draw a shape with at least 4 cells to see tilings.</p>
+            ) : splitsResult.tooLarge ? (
+              <p className="hint">
+                Shape has {splitsResult.totalCells} cells — tiling analysis is
+                capped at {splitsResult.maxCells} cells to keep the browser
+                responsive.
+              </p>
+            ) : splitsResult.disconnected ? (
+              <p className="hint">
+                Tiling analysis only works on a single connected shape.
+              </p>
+            ) : splitsResult.totalCells < 4 ? (
+              <p className="hint">Draw a shape with at least 4 cells to see tilings.</p>
+            ) : displayedSplits.length === 0 ? (
+              splitsResult.aborted ? (
+                <p className="hint">
+                  Search hit its iteration budget before finding a tiling. The shape may still have one.
+                </p>
+              ) : (
+                <p className="hint">
+                  {showAllSplits
+                    ? 'No 2-piece cuts found.'
+                    : 'No single piece tiles this shape twice. Try the option above to see uneven 2-piece cuts.'}
+                </p>
+              )
+            ) : (
+              <>
+                {splitsResult.aborted ? (
+                  <p className="hint">
+                    Showing partial results — the search hit its iteration budget
+                    before exploring every possibility.
+                  </p>
+                ) : null}
+                <div className="split-list">
+                  {displayedSplits.map((s, i) => (
+                    <SplitView key={i} split={s} />
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+
+        </div>
       )}
 
       <footer>
@@ -590,10 +628,19 @@ export default function App() {
   );
 }
 
-function CatalogPanel({ onSelectPiece }: { onSelectPiece: (grid: Grid) => void }) {
-  const [size, setSize] = useState(CATALOG_DEFAULT_SIZE);
+function CatalogPanel({
+  size,
+  onSizeChange,
+  onSelectPiece,
+}: {
+  size: number;
+  onSizeChange: (size: number) => void;
+  onSelectPiece: (grid: Grid) => void;
+}) {
   const [computing, setComputing] = useState(false);
-  const [polyominoes, setPolyominoes] = useState<Polyomino[]>([]);
+  const [polyominoes, setPolyominoes] = useState<Polyomino[]>(() =>
+    enumerateFreePolyominoes(size),
+  );
 
   // Defer the actual enumeration to a microtask so the slider feels snappy
   // when scrubbing across sizes (the largest case ~ size 8 is the slow one).
@@ -615,11 +662,7 @@ function CatalogPanel({ onSelectPiece }: { onSelectPiece: (grid: Grid) => void }
   return (
     <section className="catalog" aria-labelledby="catalog-heading">
       <h2 id="catalog-heading">Piece Catalog</h2>
-      <p className="hint">
-        Browse every distinct shape (up to rotation and reflection) of a given
-        size. Click a piece to load it into the Shape Helper above — the
-        browser back button will bring you back here.
-      </p>
+      <p className="hint">Browse every distinct shape (up to rotation and reflection) of a given size. Click a piece to load it into the Shape Helper.</p>
       <div className="controls catalog-controls">
         <label>
           Piece size:{' '}
@@ -630,7 +673,7 @@ function CatalogPanel({ onSelectPiece }: { onSelectPiece: (grid: Grid) => void }
             max={CATALOG_MAX_SIZE}
             value={size}
             aria-valuetext={`${size} cells`}
-            onChange={(e) => setSize(Number(e.target.value))}
+            onChange={(e) => onSizeChange(Number(e.target.value))}
           />
         </label>
         <span className="dims" aria-live="polite">
@@ -649,7 +692,7 @@ function CatalogPanel({ onSelectPiece }: { onSelectPiece: (grid: Grid) => void }
               key={p.key}
               poly={p}
               index={i}
-              onSelect={() => onSelectPiece(p.grid)}
+              onSelect={onSelectPiece}
             />
           ))}
         </div>
@@ -658,23 +701,24 @@ function CatalogPanel({ onSelectPiece }: { onSelectPiece: (grid: Grid) => void }
   );
 }
 
-function CatalogPiece({
+const CatalogPiece = memo(function CatalogPiece({
   poly,
   index,
   onSelect,
 }: {
   poly: Polyomino;
   index: number;
-  onSelect: () => void;
+  onSelect: (grid: Grid) => void;
 }) {
   const rows = poly.grid.length;
   const cols = poly.grid[0]?.length ?? 0;
+  const handleClick = useCallback(() => onSelect(poly.grid), [onSelect, poly.grid]);
   return (
     <button
       type="button"
       className="variant catalog-piece"
       aria-label={`Load piece ${index + 1} (${rows} by ${cols}) into the Shape Helper`}
-      onClick={onSelect}
+      onClick={handleClick}
     >
       <div
         className="mini-grid"
@@ -703,7 +747,7 @@ function CatalogPiece({
       </span>
     </button>
   );
-}
+});
 
 function SplitView({ split }: { split: Split }) {
   // Bounding box of the whole shape (A ∪ B) so the cut is shown in context.
@@ -1022,7 +1066,7 @@ function edgeStyle(grid: Grid, r: number, c: number): React.CSSProperties {
  * user stops editing. Stale responses (from a grid that has since changed) are
  * dropped by comparing requestIds.
  */
-function useSplits(grid: Grid): { result: SplitsResult | null; pending: boolean } {
+function useSplits(grid: Grid | null): { result: SplitsResult | null; pending: boolean } {
   const [result, setResult] = useState<SplitsResult | null>(null);
   const [pending, setPending] = useState(false);
   const workerRef = useRef<Worker | null>(null);
@@ -1049,6 +1093,14 @@ function useSplits(grid: Grid): { result: SplitsResult | null; pending: boolean 
 
   // Debounce: schedule a worker request 400ms after the most recent grid edit.
   useEffect(() => {
+    // `null` grid means the consumer is currently hidden (e.g. the Catalog tab
+    // is active) — don't bother the worker.
+    if (!grid) {
+      requestIdRef.current++;
+      latestRequestIdRef.current = requestIdRef.current;
+      setPending(false);
+      return;
+    }
     // If the grid has no filled cells, short-circuit to an empty result without
     // bothering the worker.
     const hasAny = grid.some((row) => row.some(Boolean));
