@@ -65,9 +65,17 @@ function freeKey(grid: Grid): string {
 /**
  * Enumerate all free polyominoes (deduped by rotation + reflection) of the given size.
  * For n up to 8 this is tractable in the browser (n=8 yields 369 free polyominoes).
+ *
+ * Results are cached per `n` for the lifetime of the module so that scrubbing
+ * the slider back and forth doesn't repeat the work.
  */
+const enumerationCache = new Map<number, Polyomino[]>();
+
 export function enumerateFreePolyominoes(n: number): Polyomino[] {
   if (n < 1) return [];
+  const cached = enumerationCache.get(n);
+  if (cached) return cached;
+
   const fixedSeen = new Set<string>();
   const freeSeen = new Map<string, Polyomino>();
 
@@ -77,12 +85,14 @@ export function enumerateFreePolyominoes(n: number): Polyomino[] {
   expand(initial, n, fixedSeen, freeSeen);
 
   // Return in a stable order: smaller bounding box first, then by key.
-  return [...freeSeen.values()].sort((a, b) => {
+  const result = [...freeSeen.values()].sort((a, b) => {
     const aArea = a.grid.length * a.grid[0].length;
     const bArea = b.grid.length * b.grid[0].length;
     if (aArea !== bArea) return aArea - bArea;
     return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
   });
+  enumerationCache.set(n, result);
+  return result;
 }
 
 function expand(
