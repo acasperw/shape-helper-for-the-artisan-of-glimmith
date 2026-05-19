@@ -257,9 +257,8 @@ export function HelperPanel({
         </h2>
         <p className="hint">
           Every way {clusterN === 2 ? 'a single rotated or flipped copy' : `${clusterN - 1} more rotated or flipped copies`} of the drawn shape can sit snugly against the original
-          {clusterN >= 3 ? ' to form an N-piece cluster' : ''} (each copy shares ≥ 2 edges with what's already
-          there, no overlaps). Original in red, copies in blue{clusterN >= 3 ? ', green' : ''}
-          {clusterN >= 4 ? ', gold' : ''}. Clusters whose union exactly fills a rectangle are flagged.
+          {clusterN >= 3 ? ' to form an N-piece cluster' : ''} (each copy shares ≥ 2 edges. Copies in blue{clusterN >= 3 ? ', green' : ''}
+          {clusterN >= 4 ? ', gold' : ''}.
         </p>
         <div className="splits-controls">
           <label>
