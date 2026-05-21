@@ -1,6 +1,6 @@
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Grid } from '../shape';
-import { enumerateFreePolyominoes, type Polyomino } from '../polyominoes';
+import { enumerateFreePolyominoes, isBoxy, type Polyomino } from '../polyominoes';
 import { edgeStyle } from '../utils/edgeStyle';
 import { MiniGrid } from './MiniGrid';
 
@@ -12,9 +12,12 @@ type CatalogPanelProps = {
   onSelectPiece: (grid: Grid) => void;
 };
 
+type BoxyFilter = 'all' | 'boxy' | 'non-boxy';
+
 export function CatalogPanel({ size, minSize, maxSize, onSizeChange, onSelectPiece }: CatalogPanelProps) {
   const [computing, setComputing] = useState(false);
   const [polyominoes, setPolyominoes] = useState<Polyomino[]>(() => enumerateFreePolyominoes(size));
+  const [boxyFilter, setBoxyFilter] = useState<BoxyFilter>('all');
 
   // Defer the actual enumeration to a microtask so the slider feels snappy
   // when scrubbing across sizes (the largest case ~ size 8 is the slow one).
@@ -32,6 +35,16 @@ export function CatalogPanel({ size, minSize, maxSize, onSizeChange, onSelectPie
       window.clearTimeout(id);
     };
   }, [size]);
+
+  const tagged = useMemo(
+    () => polyominoes.map((p) => ({ poly: p, boxy: isBoxy(p.grid) })),
+    [polyominoes],
+  );
+  const filtered = useMemo(() => {
+    if (boxyFilter === 'boxy') return tagged.filter((t) => t.boxy);
+    if (boxyFilter === 'non-boxy') return tagged.filter((t) => !t.boxy);
+    return tagged;
+  }, [tagged, boxyFilter]);
 
   return (
     <section className="catalog" aria-labelledby="catalog-heading">
@@ -55,10 +68,27 @@ export function CatalogPanel({ size, minSize, maxSize, onSizeChange, onSelectPie
             onChange={(e) => onSizeChange(Number(e.target.value))}
           />
         </label>
+        <fieldset className="catalog-filter" aria-label="Filter by shape tag">
+          <legend className="catalog-filter-legend">Filter:</legend>
+          {(['all', 'boxy', 'non-boxy'] as const).map((value) => (
+            <label key={value} className="catalog-filter-option">
+              <input
+                type="radio"
+                name="catalog-boxy-filter"
+                value={value}
+                checked={boxyFilter === value}
+                onChange={() => setBoxyFilter(value)}
+              />
+              {value === 'all' ? 'All' : value === 'boxy' ? 'Boxy' : 'Non-Boxy'}
+            </label>
+          ))}
+        </fieldset>
         <span className="dims" aria-live="polite">
           {computing
             ? 'Computing…'
-            : `${polyominoes.length} distinct piece${polyominoes.length === 1 ? '' : 's'}`}
+            : boxyFilter === 'all'
+              ? `${filtered.length} distinct piece${filtered.length === 1 ? '' : 's'}`
+              : `${filtered.length} of ${tagged.length} piece${tagged.length === 1 ? '' : 's'}`}
         </span>
       </div>
 
@@ -66,10 +96,14 @@ export function CatalogPanel({ size, minSize, maxSize, onSizeChange, onSelectPie
         <p className="hint" role="status">
           Enumerating pieces…
         </p>
+      ) : filtered.length === 0 ? (
+        <p className="hint" role="status">
+          No pieces match the current filter at this size.
+        </p>
       ) : (
         <div className="variant-list catalog-list">
-          {polyominoes.map((p, i) => (
-            <CatalogPiece key={p.key} poly={p} index={i} onSelect={onSelectPiece} />
+          {filtered.map(({ poly, boxy }, i) => (
+            <CatalogPiece key={poly.key} poly={poly} index={i} boxy={boxy} onSelect={onSelectPiece} />
           ))}
         </div>
       )}
@@ -80,10 +114,12 @@ export function CatalogPanel({ size, minSize, maxSize, onSizeChange, onSelectPie
 const CatalogPiece = memo(function CatalogPiece({
   poly,
   index,
+  boxy,
   onSelect,
 }: {
   poly: Polyomino;
   index: number;
+  boxy: boolean;
   onSelect: (grid: Grid) => void;
 }) {
   const rows = poly.grid.length;
@@ -93,7 +129,7 @@ const CatalogPiece = memo(function CatalogPiece({
     <button
       type="button"
       className="variant catalog-piece"
-      aria-label={`Load piece ${index + 1} (${rows} by ${cols}) into the Shape Helper`}
+      aria-label={`Load piece ${index + 1} (${rows} by ${cols}, ${boxy ? 'boxy' : 'non-boxy'}) into the Shape Helper`}
       onClick={handleClick}
     >
       <MiniGrid
@@ -115,6 +151,10 @@ const CatalogPiece = memo(function CatalogPiece({
       <span className="catalog-piece-label">
         #{index + 1} <span className="dims">({rows}×{cols})</span>
       </span>
+      <span className={`catalog-piece-tag ${boxy ? 'is-boxy' : 'is-non-boxy'}`}>
+        {boxy ? 'Boxy' : 'Non-Boxy'}
+      </span>
     </button>
   );
 });
+

@@ -12,7 +12,7 @@ const BOARD_MIN_SIZE = 5;
 const BOARD_MAX_SIZE = 15;
 const BOARD_DEFAULT_SIZE = 8;
 const CATALOG_MIN_SIZE = 3;
-const CATALOG_MAX_SIZE = 8;
+const CATALOG_MAX_SIZE = 9;
 const CATALOG_DEFAULT_SIZE = 5;
 
 const BOUNDS = {

@@ -52,6 +52,23 @@ function cellsToGrid(cells: Iterable<Cell>): Grid {
   return grid;
 }
 
+/**
+ * Returns true if the polyomino is "boxy" — i.e. its filled cells exactly
+ * fill its bounding box (the shape is a solid rectangle).
+ */
+export function isBoxy(grid: Grid): boolean {
+  const rows = grid.length;
+  if (rows === 0) return false;
+  const cols = grid[0].length;
+  if (cols === 0) return false;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!grid[r][c]) return false;
+    }
+  }
+  return true;
+}
+
 /** Canonical free-polyomino key: lexicographically smallest variant key. */
 function freeKey(grid: Grid): string {
   const variants = generateVariants(grid);
@@ -64,7 +81,8 @@ function freeKey(grid: Grid): string {
 
 /**
  * Enumerate all free polyominoes (deduped by rotation + reflection) of the given size.
- * For n up to 8 this is tractable in the browser (n=8 yields 369 free polyominoes).
+ * For n up to 9 this is tractable in the browser (n=8 yields 369 free polyominoes,
+ * n=9 yields 1285). Beyond that, expect a noticeable pause on the first call.
  *
  * Results are cached per `n` for the lifetime of the module so that scrubbing
  * the slider back and forth doesn't repeat the work.
