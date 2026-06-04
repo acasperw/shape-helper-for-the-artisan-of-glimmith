@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { emptyGrid, resizeGrid, type Grid } from '../shape';
-import { gridTemplateStyle } from '../utils/edgeStyle';
+import { edgeStyle, gridTemplateStyle } from '../utils/edgeStyle';
 import { countCompass, directionsOf, type Direction } from '../compass';
 
 const MIN_SIZE = 5;
@@ -20,23 +20,26 @@ const DIR_META: { key: Direction; short: string; full: string }[] = [
 ];
 
 /**
- * A small worked example region (an L-ish region with a notch) so the tab is
- * immediately illustrative the first time it's opened.
+ * A small worked example region chosen so the compass shows a memorable spread
+ * of counts — including a 0 to the West — the first time the tab is opened.
+ * With the compass on (4, 3): North = 2, East = 5, South = 1, West = 0.
  */
 function makeExampleRegion(size: number): Grid {
   const g = emptyGrid(size);
   const fill = (r: number, c: number) => {
     if (r >= 0 && r < size && c >= 0 && c < size) g[r][c] = true;
   };
-  // Top bar
-  for (let c = 1; c <= 5; c++) fill(1, c);
-  // Middle band
-  for (let c = 1; c <= 6; c++) fill(2, c);
-  for (let c = 1; c <= 6; c++) fill(3, c);
-  // Bottom feet
-  for (let c = 1; c <= 3; c++) fill(4, c);
+  // Two cells above the compass (North = 2)
+  fill(3, 3);
+  fill(3, 4);
+  // Horizontal arm reaching east from the compass cell (East = 5)
+  fill(4, 3);
+  fill(4, 4);
   fill(4, 5);
   fill(4, 6);
+  fill(4, 7);
+  // One cell below the compass (South = 1, West = 0)
+  fill(5, 3);
   return g;
 }
 
@@ -49,7 +52,7 @@ function makeExampleRegion(size: number): Grid {
 export function CompassPanel() {
   const [size, setSize] = useState(DEFAULT_SIZE);
   const [region, setRegion] = useState<Grid>(() => makeExampleRegion(DEFAULT_SIZE));
-  const [compass, setCompass] = useState<Compass | null>({ r: 3, c: 3 });
+  const [compass, setCompass] = useState<Compass | null>({ r: 4, c: 3 });
   const [mode, setMode] = useState<Mode>('compass');
   const [visible, setVisible] = useState<Record<Direction, boolean>>({
     n: true,
@@ -177,7 +180,7 @@ export function CompassPanel() {
     const n = Math.max(MIN_SIZE, Math.min(MAX_SIZE, 8));
     setSize(n);
     setRegion(makeExampleRegion(n));
-    setCompass({ r: 3, c: 3 });
+    setCompass({ r: 4, c: 3 });
     setMode('compass');
     setVisible({ n: true, e: true, s: true, w: true });
   };
@@ -199,7 +202,7 @@ export function CompassPanel() {
     for (const { key } of DIR_META) {
       if (!visible[key] || !dirs[key]) continue;
       // Counted region cells get a strong wash; empty half-plane cells a hint.
-      const pct = isRegion ? 60 : 14;
+      const pct = isRegion ? 42 : 14;
       const color = `var(--compass-${key})`;
       const mix = `color-mix(in srgb, ${color} ${pct}%, transparent)`;
       layers.push(`linear-gradient(${mix}, ${mix})`);
@@ -305,15 +308,22 @@ export function CompassPanel() {
                   data-r={r}
                   data-c={c}
                   tabIndex={isFocus ? 0 : -1}
-                  className={`compass-cell${isRegion ? ' region' : ''}${
+                  className={`cell compass-cell${isRegion ? ' on' : ''}${
                     isCompass ? ' is-compass' : ''
                   }`}
-                  style={bg ? { backgroundImage: bg } : undefined}
+                  style={isRegion ? edgeStyle(region, r, c) : undefined}
                   onPointerDown={handlePointerDown(r, c)}
                   onPointerEnter={handlePointerEnter(r, c)}
                   onFocus={() => setFocus({ r, c })}
                   onKeyDown={handleCellKeyDown(r, c)}
                 >
+                  {bg && (
+                    <span
+                      className="compass-wash"
+                      style={{ backgroundImage: bg }}
+                      aria-hidden="true"
+                    />
+                  )}
                   {isCompass && (
                     <span className="compass-rose" aria-hidden="true">
                       <span className="rose-mark" />

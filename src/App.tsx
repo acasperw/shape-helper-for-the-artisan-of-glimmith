@@ -3,6 +3,7 @@ import { emptyGrid, type Grid } from './shape';
 import { CatalogPanel } from './components/CatalogPanel';
 import { HelperPanel } from './components/HelperPanel';
 import { CompassPanel } from './components/CompassPanel';
+import { WatchtowerPanel } from './components/WatchtowerPanel';
 import { useHashTab } from './hooks/useHashTab';
 import { usePersistedAppState } from './hooks/usePersistedAppState';
 
@@ -25,7 +26,7 @@ const BOUNDS = {
   boardDefault: BOARD_DEFAULT_SIZE,
 } as const;
 
-const TABS = ['helper', 'catalog', 'compass'] as const;
+const TABS = ['helper', 'catalog', 'compass', 'watchtower'] as const;
 type TabId = (typeof TABS)[number];
 
 export default function App() {
@@ -114,6 +115,18 @@ export default function App() {
           >
             Compass
           </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-watchtower"
+            aria-selected={activeTab === 'watchtower'}
+            aria-controls="panel-watchtower"
+            tabIndex={activeTab === 'watchtower' ? 0 : -1}
+            className={`tab ${activeTab === 'watchtower' ? 'active' : ''}`}
+            onClick={() => goToTab('watchtower')}
+          >
+            Watchtower
+          </button>
         </div>
 
         {activeTab === 'catalog' ? (
@@ -129,6 +142,10 @@ export default function App() {
         ) : activeTab === 'compass' ? (
           <div id="panel-compass" role="tabpanel" aria-labelledby="tab-compass">
             <CompassPanel />
+          </div>
+        ) : activeTab === 'watchtower' ? (
+          <div id="panel-watchtower" role="tabpanel" aria-labelledby="tab-watchtower">
+            <WatchtowerPanel />
           </div>
         ) : (
           <div id="panel-helper" role="tabpanel" aria-labelledby="tab-helper">
