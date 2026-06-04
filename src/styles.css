@@ -786,3 +786,287 @@ footer a {
     width: 140px;
   }
 }
+
+/* ---------- Compass explainer ---------- */
+:root {
+  /* Directional palette: up=blue, down=amber, right=green, left=violet. */
+  --compass-n: #2f6fb0;
+  --compass-e: #3e8b3d;
+  --compass-s: #c46a1c;
+  --compass-w: #7a3fa6;
+  --compass-region: #7a9a52;
+}
+
+.compass {
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(255, 250, 230, 0.6), transparent 60%),
+    radial-gradient(ellipse at 80% 90%, rgba(160, 120, 70, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 240, 200, 0.6) inset,
+    0 0 0 1px rgba(255, 240, 200, 0.25) inset,
+    0 6px 18px rgba(40, 25, 10, 0.25);
+}
+
+.compass-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 10px 0;
+}
+
+.compass-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-soft);
+}
+
+.compass-size input[type="range"] {
+  width: 150px;
+  accent-color: var(--accent);
+}
+
+.compass-modes {
+  display: inline-flex;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  background: linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+  color: var(--ink-soft);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 8px 14px;
+}
+
+.mode-btn + .mode-btn {
+  border-left: 1px solid var(--panel-border);
+}
+
+.mode-btn.active {
+  background: linear-gradient(180deg, #b8331e 0%, #8a1f15 100%);
+  color: #fbe7c2;
+}
+
+.compass-layout {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 280px);
+  gap: 20px;
+  align-items: start;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .compass-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.compass-grid {
+  --cell-size: min(44px, calc((100vw - 96px) / var(--size, 8)));
+}
+
+button.compass-cell {
+  appearance: none;
+  -webkit-appearance: none;
+  width: var(--cell-size);
+  height: var(--cell-size);
+  position: relative;
+  padding: 0;
+  margin: 0;
+  border-top: 1px dashed var(--grid-line);
+  border-left: 1px dashed var(--grid-line);
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  background-color: transparent;
+  background-image: none;
+  background-repeat: no-repeat;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+
+/* Region membership shown as a soft sage base under any directional washes. */
+button.compass-cell.region {
+  background-color: color-mix(in srgb, var(--compass-region) 45%, transparent);
+}
+
+button.compass-cell:hover {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+@media (hover: none) {
+  button.compass-cell:hover {
+    outline: none;
+  }
+}
+
+button.compass-cell:focus {
+  outline: none;
+}
+
+button.compass-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  z-index: 2;
+}
+
+button.compass-cell.is-compass {
+  z-index: 1;
+}
+
+/* In-cell compass rose with the four counts around a central mark. */
+.compass-rose {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  place-items: center;
+  font-size: calc(var(--cell-size) * 0.26);
+  font-weight: 700;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.rose-mark {
+  grid-area: 2 / 2;
+  width: 70%;
+  height: 70%;
+  background:
+    linear-gradient(45deg, transparent 44%, var(--ink) 44% 56%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, var(--ink) 44% 56%, transparent 56%);
+  opacity: 0.7;
+}
+
+.rose-num {
+  background: rgba(255, 250, 235, 0.92);
+  border-radius: 999px;
+  min-width: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(40, 25, 10, 0.35);
+}
+
+.rose-n { grid-area: 1 / 2; }
+.rose-s { grid-area: 3 / 2; }
+.rose-e { grid-area: 2 / 3; }
+.rose-w { grid-area: 2 / 1; }
+
+/* Readout card */
+.compass-readout {
+  background: linear-gradient(180deg, #fbeecd 0%, #efdcad 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: 0 2px 6px rgba(40, 25, 10, 0.18);
+}
+
+.compass-readout h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: var(--ink-soft);
+}
+
+.compass-cross {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: repeat(3, 48px);
+  place-items: center;
+  width: 180px;
+  margin: 0 auto 12px;
+}
+
+.compass-cross > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.compass-cross strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compass-cross em {
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.compass-cross .cross-n { grid-area: 1 / 2; color: var(--compass-n); }
+.compass-cross .cross-s { grid-area: 3 / 2; color: var(--compass-s); }
+.compass-cross .cross-e { grid-area: 2 / 3; color: var(--compass-e); }
+.compass-cross .cross-w { grid-area: 2 / 1; color: var(--compass-w); }
+.compass-cross .cross-center { grid-area: 2 / 2; font-size: 22px; color: var(--muted); }
+
+.compass-toggles {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 8px 12px 10px;
+  margin: 0 0 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.compass-toggles legend {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.dir-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.dir-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.dir-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(40, 25, 10, 0.3);
+}
+
+.dir-toggle.dir-n .dir-swatch { background: var(--compass-n); }
+.dir-toggle.dir-s .dir-swatch { background: var(--compass-s); }
+.dir-toggle.dir-e .dir-swatch { background: var(--compass-e); }
+.dir-toggle.dir-w .dir-swatch { background: var(--compass-w); }
+
+.compass-notes {
+  margin-top: 14px;
+  color: var(--ink-soft);
+}
+
+.compass-notes summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.compass-notes p {
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 70ch;
+}

@@ -1,1 +1,3 @@
-A shape helping website for the game The Artisan of Glimmith. Drawing a shape will show mirror, flip, and rotation options.
+A shape helping website for the game The Artisan of Glimmith. In the shape helper, drawing a shape will show mirror, flip, and rotation options.
+
+New rules / concepts should be added in a new tabs, unless its relates to helping with an existing rule, in which case it should be added to the existing tab. Each tab should have a clear title that describes the rule or concept being explained. The content of each tab should be concise and easy to understand, with interactive examples and visuals where appropriate.

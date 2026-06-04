@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { emptyGrid, type Grid } from './shape';
 import { CatalogPanel } from './components/CatalogPanel';
 import { HelperPanel } from './components/HelperPanel';
+import { CompassPanel } from './components/CompassPanel';
 import { useHashTab } from './hooks/useHashTab';
 import { usePersistedAppState } from './hooks/usePersistedAppState';
 
@@ -24,7 +25,7 @@ const BOUNDS = {
   boardDefault: BOARD_DEFAULT_SIZE,
 } as const;
 
-const TABS = ['helper', 'catalog'] as const;
+const TABS = ['helper', 'catalog', 'compass'] as const;
 type TabId = (typeof TABS)[number];
 
 export default function App() {
@@ -75,62 +76,80 @@ export default function App() {
         <p className="subtitle">for The Artisan of Glimmith</p>
       </header>
 
-      <div className="tabs" role="tablist" aria-label="Sections">
-        <button
-          type="button"
-          role="tab"
-          id="tab-helper"
-          aria-selected={activeTab === 'helper'}
-          aria-controls="panel-helper"
-          tabIndex={activeTab === 'helper' ? 0 : -1}
-          className={`tab ${activeTab === 'helper' ? 'active' : ''}`}
-          onClick={() => goToTab('helper')}
-        >
-          Shape Helper
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="tab-catalog"
-          aria-selected={activeTab === 'catalog'}
-          aria-controls="panel-catalog"
-          tabIndex={activeTab === 'catalog' ? 0 : -1}
-          className={`tab ${activeTab === 'catalog' ? 'active' : ''}`}
-          onClick={() => goToTab('catalog')}
-        >
-          Piece Catalog
-        </button>
-      </div>
+      <main>
+        <div className="tabs" role="tablist" aria-label="Sections">
+          <button
+            type="button"
+            role="tab"
+            id="tab-helper"
+            aria-selected={activeTab === 'helper'}
+            aria-controls="panel-helper"
+            tabIndex={activeTab === 'helper' ? 0 : -1}
+            className={`tab ${activeTab === 'helper' ? 'active' : ''}`}
+            onClick={() => goToTab('helper')}
+          >
+            Shape Helper
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-catalog"
+            aria-selected={activeTab === 'catalog'}
+            aria-controls="panel-catalog"
+            tabIndex={activeTab === 'catalog' ? 0 : -1}
+            className={`tab ${activeTab === 'catalog' ? 'active' : ''}`}
+            onClick={() => goToTab('catalog')}
+          >
+            Piece Catalog
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-compass"
+            aria-selected={activeTab === 'compass'}
+            aria-controls="panel-compass"
+            tabIndex={activeTab === 'compass' ? 0 : -1}
+            className={`tab ${activeTab === 'compass' ? 'active' : ''}`}
+            onClick={() => goToTab('compass')}
+          >
+            Compass
+          </button>
+        </div>
 
-      {activeTab === 'catalog' ? (
-        <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog">
-          <CatalogPanel
-            size={catalogSize}
-            minSize={CATALOG_MIN_SIZE}
-            maxSize={CATALOG_MAX_SIZE}
-            onSizeChange={setCatalogSize}
-            onSelectPiece={loadPieceFromCatalog}
-          />
-        </div>
-      ) : (
-        <div id="panel-helper" role="tabpanel" aria-labelledby="tab-helper">
-          <HelperPanel
-            active={activeTab === 'helper'}
-            pieceSize={pieceSize}
-            setPieceSize={setPieceSize}
-            pieceGrid={pieceGrid}
-            setPieceGrid={setPieceGrid}
-            boardSize={boardSize}
-            setBoardSize={setBoardSize}
-            boardGrid={boardGrid}
-            setBoardGrid={setBoardGrid}
-            pieceMin={PIECE_MIN_SIZE}
-            pieceMax={PIECE_MAX_SIZE}
-            boardMin={BOARD_MIN_SIZE}
-            boardMax={BOARD_MAX_SIZE}
-          />
-        </div>
-      )}
+        {activeTab === 'catalog' ? (
+          <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog">
+            <CatalogPanel
+              size={catalogSize}
+              minSize={CATALOG_MIN_SIZE}
+              maxSize={CATALOG_MAX_SIZE}
+              onSizeChange={setCatalogSize}
+              onSelectPiece={loadPieceFromCatalog}
+            />
+          </div>
+        ) : activeTab === 'compass' ? (
+          <div id="panel-compass" role="tabpanel" aria-labelledby="tab-compass">
+            <CompassPanel />
+          </div>
+        ) : (
+          <div id="panel-helper" role="tabpanel" aria-labelledby="tab-helper">
+            <HelperPanel
+              active={activeTab === 'helper'}
+              pieceSize={pieceSize}
+              setPieceSize={setPieceSize}
+              pieceGrid={pieceGrid}
+              setPieceGrid={setPieceGrid}
+              boardSize={boardSize}
+              setBoardSize={setBoardSize}
+              boardGrid={boardGrid}
+              setBoardGrid={setBoardGrid}
+              pieceMin={PIECE_MIN_SIZE}
+              pieceMax={PIECE_MAX_SIZE}
+              boardMin={BOARD_MIN_SIZE}
+              boardMax={BOARD_MAX_SIZE}
+            />
+          </div>
+        )}
+      </main>
 
       <footer>
         <a
