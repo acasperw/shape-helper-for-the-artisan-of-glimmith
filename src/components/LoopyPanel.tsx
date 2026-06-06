@@ -30,11 +30,28 @@ const RULE_META: Record<Rule, { label: string; forbidden: number; junction: stri
 const junctionName = (degree: number) => (degree === 4 ? 'crossing' : 'triple junction');
 
 /**
- * A clean closed loop: one internal rectangle of borders. Every vertex on it
- * has two borders, so it satisfies both rules — a good "this is allowed" state.
+ * Carve a 1×1 notch out of the top-right corner of the boundary, so the board
+ * reads as a non-rectangular shape while the boundary stays one closed loop
+ * (every boundary vertex keeps two borders). Shows that the frame is editable.
+ */
+function carveCorner(w: Walls, size: number): Walls {
+  const k = size - 1;
+  // Open the two outer corner segments…
+  w = setWall(w, 'h', 0, k, false); // top edge of the corner cell
+  w = setWall(w, 'v', 0, size, false); // right edge of the corner cell
+  // …and step the boundary inward around the removed cell.
+  w = setWall(w, 'v', 0, k, true); // new vertical wall on the cell's left
+  w = setWall(w, 'h', 1, k, true); // new horizontal wall on the cell's bottom
+  return w;
+}
+
+/**
+ * A clean closed loop: a notched (non-rectangular) boundary plus one internal
+ * rectangle of borders. Every vertex has two borders, so it satisfies both
+ * rules — a good "this is allowed" state.
  */
 function makeValidExample(size: number): Walls {
-  let w = emptyWalls(size);
+  let w = carveCorner(emptyWalls(size), size);
   const r0 = 1;
   const c0 = 1;
   const r1 = Math.min(size - 1, 4);
@@ -96,8 +113,8 @@ export function LoopyPanel() {
     const clamped = Math.max(MIN_SIZE, Math.min(MAX_SIZE, n));
     setSize(clamped);
     setWalls((prev) => resizeWalls(prev, clamped));
-    setFocusV((f) => ({ r: Math.min(f.r, clamped - 1), c: Math.min(Math.max(1, f.c), clamped - 1) }));
-    setFocusH((f) => ({ r: Math.min(Math.max(1, f.r), clamped - 1), c: Math.min(f.c, clamped - 1) }));
+    setFocusV((f) => ({ r: Math.min(f.r, clamped - 1), c: Math.min(f.c, clamped) }));
+    setFocusH((f) => ({ r: Math.min(f.r, clamped), c: Math.min(f.c, clamped - 1) }));
   };
 
   const paintEdge = useCallback((kind: EdgeKind, r: number, c: number, value: boolean) => {
@@ -146,11 +163,11 @@ export function LoopyPanel() {
         paintEdge(kind, r, c, !getWall(walls, kind, r, c));
         return;
       }
-      // Internal ranges differ per orientation.
-      const rMin = kind === 'v' ? 0 : 1;
-      const rMax = kind === 'v' ? size - 1 : size - 1;
-      const cMin = kind === 'v' ? 1 : 0;
-      const cMax = kind === 'v' ? size - 1 : size - 1;
+      // Edge lattice ranges, boundary included.
+      const rMin = 0;
+      const rMax = kind === 'v' ? size - 1 : size;
+      const cMin = 0;
+      const cMax = kind === 'v' ? size : size - 1;
       const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
       switch (e.key) {
         case 'ArrowUp':
@@ -184,8 +201,8 @@ export function LoopyPanel() {
 
   // Keep keyboard focus targets valid if a resize shrank the board.
   useEffect(() => {
-    setFocusV((f) => ({ r: Math.min(f.r, size - 1), c: Math.min(Math.max(1, f.c), size - 1) }));
-    setFocusH((f) => ({ r: Math.min(Math.max(1, f.r), size - 1), c: Math.min(f.c, size - 1) }));
+    setFocusV((f) => ({ r: Math.min(f.r, size - 1), c: Math.min(f.c, size) }));
+    setFocusH((f) => ({ r: Math.min(f.r, size), c: Math.min(f.c, size - 1) }));
   }, [size]);
 
   const jCount = analysis.junctions.length;
@@ -218,9 +235,10 @@ export function LoopyPanel() {
         <strong>Loopy</strong> forbids any spot where exactly{' '}
         <strong>three</strong> borders meet (a T-junction), and{' '}
         <strong>Bricky</strong> forbids any spot where exactly{' '}
-        <strong>four</strong> meet (a crossing). Pick the rules to check, draw borders on
-        the grid edges (the board frame already counts), and the panel marks
-        every point that breaks an active rule.
+        <strong>four</strong> meet (a crossing). Pick the rules to check, then
+        draw borders on the grid edges. The board starts as a rectangle, but the
+        boundary is editable too — real boards are rarely rectangles — so you can
+        reshape it and the panel marks every point that breaks an active rule.
       </p>
 
       <div className="loopy-controls">
@@ -265,9 +283,9 @@ export function LoopyPanel() {
       </div>
 
       <p className="hint" id="loopy-instructions">
-        Click or drag along the dashed grid lines to add or remove borders. Tab
-        into a border layer and use the arrow keys, then Space or Enter to
-        toggle.
+        Click or drag along the grid lines to add or remove borders — including
+        the heavy boundary, so you can carve out non-rectangular boards. Tab into
+        a border layer and use the arrow keys, then Space or Enter to toggle.
       </p>
 
       <div className="loopy-layout">
@@ -289,16 +307,6 @@ export function LoopyPanel() {
                 ['--er' as string]: r,
                 ['--ec' as string]: c,
               };
-              if (frame) {
-                return (
-                  <span
-                    key={`v-${r}-${c}`}
-                    className="loopy-edge loopy-edge-v is-wall is-frame"
-                    style={style}
-                    aria-hidden="true"
-                  />
-                );
-              }
               const isFocus = focusV.r === r && focusV.c === c;
               return (
                 <button
@@ -309,8 +317,8 @@ export function LoopyPanel() {
                   data-ec={c}
                   tabIndex={isFocus ? 0 : -1}
                   aria-pressed={wall}
-                  aria-label={`Vertical border, row ${r + 1}, line ${c}`}
-                  className={`loopy-edge loopy-edge-v${wall ? ' is-wall' : ''}`}
+                  aria-label={`${frame ? 'Boundary' : 'Vertical'} border, row ${r + 1}, line ${c}`}
+                  className={`loopy-edge loopy-edge-v${wall ? ' is-wall' : ''}${frame ? ' is-frame' : ''}`}
                   style={style}
                   onPointerDown={handleEdgePointerDown('v', r, c)}
                   onPointerEnter={handleEdgePointerEnter('v', r, c)}
@@ -331,16 +339,6 @@ export function LoopyPanel() {
                 ['--er' as string]: r,
                 ['--ec' as string]: c,
               };
-              if (frame) {
-                return (
-                  <span
-                    key={`h-${r}-${c}`}
-                    className="loopy-edge loopy-edge-h is-wall is-frame"
-                    style={style}
-                    aria-hidden="true"
-                  />
-                );
-              }
               const isFocus = focusH.r === r && focusH.c === c;
               return (
                 <button
@@ -351,8 +349,8 @@ export function LoopyPanel() {
                   data-ec={c}
                   tabIndex={isFocus ? 0 : -1}
                   aria-pressed={wall}
-                  aria-label={`Horizontal border, line ${r}, column ${c + 1}`}
-                  className={`loopy-edge loopy-edge-h${wall ? ' is-wall' : ''}`}
+                  aria-label={`${frame ? 'Boundary' : 'Horizontal'} border, line ${r}, column ${c + 1}`}
+                  className={`loopy-edge loopy-edge-h${wall ? ' is-wall' : ''}${frame ? ' is-frame' : ''}`}
                   style={style}
                   onPointerDown={handleEdgePointerDown('h', r, c)}
                   onPointerEnter={handleEdgePointerEnter('h', r, c)}
@@ -449,17 +447,16 @@ export function LoopyPanel() {
           to form proper loops, every point it passes must have an{' '}
           <strong>even</strong> number of border ends — zero (empty), two (the
           loop passes straight through or turns a corner), or four (two loops
-          cross). The board frame always contributes borders, so a stray line
-          poking in from the edge instantly makes a three-border point.
+          cross). The board boundary is just more border, so reshaping it changes
+          which points break the rules: a stray line poking in from the edge
+          instantly makes a three-border point.
         </p>
         <p>
           <strong>Loopy</strong> forbids the <em>three-border</em> point (a
           T-junction): you can never have a spot where a third border tees into a
           passing line. <strong>Bricky</strong> forbids the{' '}
           <em>four-border</em> point (a crossing), the way bricks are laid so
-          seams never line up into a plus. The two rules are independent, so a
-          puzzle may impose either on its own — or both together, leaving only
-          straight pass-throughs and corners. Because borders cannot simply stop,
+          seams never line up into a plus. Because borders cannot simply stop,
           adding one segment usually forces you to keep going until it closes a
           loop, meets the frame cleanly, or joins another border.
         </p>

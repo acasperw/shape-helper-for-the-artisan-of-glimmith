@@ -1707,23 +1707,14 @@ button.loopy-edge-h:active {
   transform: translateY(-50%);
 }
 
-/* The fixed board frame: always a border, thicker and not interactive. */
-.loopy-edge.is-frame {
-  pointer-events: none;
+/* The board boundary: borders too, just drawn heavier. Editable, so the
+   playable area need not be a rectangle. */
+.loopy-edge-v.is-frame .loopy-wall {
+  width: 7px;
 }
 
-.loopy-edge-v.is-frame {
-  width: 6px;
-  height: var(--cell-size);
-  background: var(--grid-line-strong);
-  border-radius: 2px;
-}
-
-.loopy-edge-h.is-frame {
-  height: 6px;
-  width: var(--cell-size);
-  background: var(--grid-line-strong);
-  border-radius: 2px;
+.loopy-edge-h.is-frame .loopy-wall {
+  height: 7px;
 }
 
 /* Rule-breaking vertex markers. */
