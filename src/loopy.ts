@@ -1,8 +1,9 @@
 /**
  * Logic for the "Loopy" rule (and its sibling "Bricky") in The Artisan of
- * Glimmith. Borders are drawn on the edges between cells; the board frame is
- * always a border. The rule forbids any grid vertex where exactly N border
- * segments meet:
+ * Glimmith. Borders are drawn on the edges between cells. A blank board starts
+ * with the outer rectangle as borders, but every edge — boundary included — is
+ * editable, since real puzzle boards are rarely rectangles. The rule forbids
+ * any grid vertex where exactly N border segments meet:
  *
  *  - Loopy  → N = 3 (no T-junctions: three borders may never meet at a point)
  *  - Bricky → N = 4 (no crossings: four borders may never meet at a point)
@@ -51,29 +52,33 @@ export function emptyWalls(size: number): Walls {
   return { size, vertical, horizontal };
 }
 
-/** Resize, keeping internal walls that still fit; the frame is rebuilt. */
+/** Resize, keeping any walls that still fit; the new outer ring defaults on. */
 export function resizeWalls(walls: Walls, newSize: number): Walls {
   const next = emptyWalls(newSize);
   const copy = Math.min(walls.size, newSize);
   for (let r = 0; r < copy; r++) {
-    for (let c = 1; c < copy; c++) {
-      if (walls.vertical[r]?.[c]) next.vertical[r][c] = true;
+    for (let c = 0; c <= copy; c++) {
+      if (walls.vertical[r]?.[c] !== undefined && next.vertical[r]?.[c] !== undefined) {
+        next.vertical[r][c] = walls.vertical[r][c];
+      }
     }
   }
-  for (let r = 1; r < copy; r++) {
+  for (let r = 0; r <= copy; r++) {
     for (let c = 0; c < copy; c++) {
-      if (walls.horizontal[r]?.[c]) next.horizontal[r][c] = true;
+      if (walls.horizontal[r]?.[c] !== undefined && next.horizontal[r]?.[c] !== undefined) {
+        next.horizontal[r][c] = walls.horizontal[r][c];
+      }
     }
   }
   return next;
 }
 
-/** Whether the given edge can be toggled (internal, not part of the frame). */
+/** Whether the given edge is part of the default outer rectangle. */
 export function isInternalEdge(size: number, kind: EdgeKind, r: number, c: number): boolean {
   return kind === 'v' ? !isFrameV(size, c) : !isFrameH(size, r);
 }
 
-/** Return a copy of `walls` with the value of one internal edge set. */
+/** Return a copy of `walls` with the value of one edge set (boundary included). */
 export function setWall(
   walls: Walls,
   kind: EdgeKind,
@@ -81,13 +86,14 @@ export function setWall(
   c: number,
   value: boolean,
 ): Walls {
-  if (!isInternalEdge(walls.size, kind, r, c)) return walls;
   if (kind === 'v') {
+    if (walls.vertical[r]?.[c] === undefined) return walls;
     if (walls.vertical[r][c] === value) return walls;
     const vertical = walls.vertical.map((row) => row.slice());
     vertical[r][c] = value;
     return { ...walls, vertical };
   }
+  if (walls.horizontal[r]?.[c] === undefined) return walls;
   if (walls.horizontal[r][c] === value) return walls;
   const horizontal = walls.horizontal.map((row) => row.slice());
   horizontal[r][c] = value;
