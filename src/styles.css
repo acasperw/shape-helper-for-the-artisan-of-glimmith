@@ -1521,3 +1521,356 @@ button.compass-cell.is-compass {
   max-width: 70ch;
 }
 
+/* ---------- Loopy / Bricky explainer ---------- */
+.loopy {
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(255, 250, 230, 0.6), transparent 60%),
+    radial-gradient(ellipse at 80% 90%, rgba(160, 120, 70, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 240, 200, 0.6) inset,
+    0 0 0 1px rgba(255, 240, 200, 0.25) inset,
+    0 6px 18px rgba(40, 25, 10, 0.25);
+}
+
+.loopy-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 10px 0;
+}
+
+.loopy-rules {
+  display: inline-flex;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.loopy-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-soft);
+}
+
+.loopy-size input[type="range"] {
+  width: 150px;
+  accent-color: var(--accent);
+}
+
+.loopy-layout {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 280px);
+  gap: 20px;
+  align-items: start;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .loopy-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.loopy-stage {
+  --cell-size: min(52px, calc((100vw - 140px) / var(--size, 6)));
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  padding: calc(var(--cell-size) / 2);
+}
+
+/* Background grid of dashed guides; borders are drawn by the edge overlays. */
+.loopy-grid {
+  --cell-size: inherit;
+  margin: 0;
+  border: none;
+  background: none;
+}
+
+.loopy-grid .cell {
+  border-top: 1px dashed var(--grid-line);
+  border-left: 1px dashed var(--grid-line);
+}
+
+/* Edge overlays line up with the grid (same inset as the stage padding). */
+.loopy-edges {
+  position: absolute;
+  inset: calc(var(--cell-size) / 2);
+  pointer-events: none;
+}
+
+.loopy-edge {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Vertical edge: centred on its column line, spanning one cell down. */
+.loopy-edge-v {
+  left: calc(var(--ec) * var(--cell-size));
+  top: calc(var(--er) * var(--cell-size));
+  width: min(18px, calc(var(--cell-size) * 0.5));
+  height: var(--cell-size);
+  transform: translateX(-50%);
+}
+
+/* Horizontal edge: centred on its row line, spanning one cell across. */
+.loopy-edge-h {
+  top: calc(var(--er) * var(--cell-size));
+  left: calc(var(--ec) * var(--cell-size));
+  height: min(18px, calc(var(--cell-size) * 0.5));
+  width: var(--cell-size);
+  transform: translateY(-50%);
+}
+
+button.loopy-edge {
+  cursor: pointer;
+  pointer-events: auto;
+  display: block;
+}
+
+/* The visible border line drawn inside an edge hit-target. */
+.loopy-wall {
+  position: absolute;
+  background: var(--grid-line-strong);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 70ms ease;
+}
+
+.loopy-edge-v .loopy-wall {
+  left: 50%;
+  top: 0;
+  width: 5px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.loopy-edge-h .loopy-wall {
+  top: 50%;
+  left: 0;
+  height: 5px;
+  width: 100%;
+  transform: translateY(-50%);
+}
+
+button.loopy-edge.is-wall .loopy-wall {
+  opacity: 1;
+}
+
+/* Hover/focus affordance on draggable edges. */
+button.loopy-edge:hover .loopy-wall {
+  opacity: 0.4;
+  background: var(--accent);
+}
+
+button.loopy-edge.is-wall:hover .loopy-wall {
+  opacity: 1;
+  background: var(--grid-line-strong);
+}
+
+@media (hover: none) {
+  button.loopy-edge:hover .loopy-wall {
+    opacity: 0;
+  }
+  button.loopy-edge.is-wall:hover .loopy-wall {
+    opacity: 1;
+  }
+}
+
+button.loopy-edge:focus {
+  outline: none;
+}
+
+button.loopy-edge:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 3px;
+  z-index: 3;
+}
+
+button.loopy-edge:active {
+  transform: translateX(-50%);
+}
+
+button.loopy-edge-h:active {
+  transform: translateY(-50%);
+}
+
+/* The fixed board frame: always a border, thicker and not interactive. */
+.loopy-edge.is-frame {
+  pointer-events: none;
+}
+
+.loopy-edge-v.is-frame {
+  width: 6px;
+  height: var(--cell-size);
+  background: var(--grid-line-strong);
+  border-radius: 2px;
+}
+
+.loopy-edge-h.is-frame {
+  height: 6px;
+  width: var(--cell-size);
+  background: var(--grid-line-strong);
+  border-radius: 2px;
+}
+
+/* Rule-breaking vertex markers. */
+.loopy-vertices {
+  position: absolute;
+  inset: calc(var(--cell-size) / 2);
+  pointer-events: none;
+}
+
+.loopy-mark {
+  position: absolute;
+  left: calc(var(--vc) * var(--cell-size));
+  top: calc(var(--vr) * var(--cell-size));
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+}
+
+.loopy-junction {
+  width: calc(var(--cell-size) * 0.7);
+  height: calc(var(--cell-size) * 0.7);
+  font-size: calc(var(--cell-size) * 0.62);
+  font-weight: 800;
+  line-height: 1;
+  color: #d8261f;
+  text-shadow:
+    0 0 3px rgba(255, 250, 235, 0.95),
+    0 0 3px rgba(255, 250, 235, 0.95);
+}
+
+.loopy-loose {
+  width: calc(var(--cell-size) * 0.32);
+  height: calc(var(--cell-size) * 0.32);
+  border-radius: 50%;
+  background: #e0a32b;
+  border: 2px solid rgba(40, 25, 10, 0.55);
+  box-shadow: 0 0 0 2px rgba(255, 250, 235, 0.7);
+}
+
+/* Readout card */
+.loopy-readout {
+  background: linear-gradient(180deg, #fbeecd 0%, #efdcad 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: 0 2px 6px rgba(40, 25, 10, 0.18);
+}
+
+.loopy-readout h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: var(--ink-soft);
+}
+
+.loopy-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.loopy-status.ok {
+  color: #2f7d34;
+}
+
+.loopy-status.bad {
+  color: var(--accent);
+}
+
+.loopy-status-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 800;
+  flex: 0 0 auto;
+  color: #fff;
+}
+
+.loopy-status.ok .loopy-status-icon {
+  background: #2f7d34;
+}
+
+.loopy-status.bad .loopy-status-icon {
+  background: var(--accent);
+}
+
+.loopy-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.loopy-legend li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.loopy-swatch {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+}
+
+.loopy-swatch.junction {
+  color: #d8261f;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.loopy-swatch.loose {
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #e0a32b;
+  border: 2px solid rgba(40, 25, 10, 0.55);
+}
+
+.loopy-notes {
+  margin-top: 14px;
+  color: var(--ink-soft);
+}
+
+.loopy-notes summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.loopy-notes p {
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 70ch;
+}
+
+

@@ -4,6 +4,7 @@ import { CatalogPanel } from './components/CatalogPanel';
 import { HelperPanel } from './components/HelperPanel';
 import { CompassPanel } from './components/CompassPanel';
 import { WatchtowerPanel } from './components/WatchtowerPanel';
+import { LoopyPanel } from './components/LoopyPanel';
 import { useHashTab } from './hooks/useHashTab';
 import { usePersistedAppState } from './hooks/usePersistedAppState';
 
@@ -26,7 +27,7 @@ const BOUNDS = {
   boardDefault: BOARD_DEFAULT_SIZE,
 } as const;
 
-const TABS = ['helper', 'catalog', 'compass', 'watchtower'] as const;
+const TABS = ['helper', 'catalog', 'compass', 'watchtower', 'loopy'] as const;
 type TabId = (typeof TABS)[number];
 
 export default function App() {
@@ -127,6 +128,18 @@ export default function App() {
           >
             Watchtower
           </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-loopy"
+            aria-selected={activeTab === 'loopy'}
+            aria-controls="panel-loopy"
+            tabIndex={activeTab === 'loopy' ? 0 : -1}
+            className={`tab ${activeTab === 'loopy' ? 'active' : ''}`}
+            onClick={() => goToTab('loopy')}
+          >
+            Loopy &amp; Bricky
+          </button>
         </div>
 
         {activeTab === 'catalog' ? (
@@ -146,6 +159,10 @@ export default function App() {
         ) : activeTab === 'watchtower' ? (
           <div id="panel-watchtower" role="tabpanel" aria-labelledby="tab-watchtower">
             <WatchtowerPanel />
+          </div>
+        ) : activeTab === 'loopy' ? (
+          <div id="panel-loopy" role="tabpanel" aria-labelledby="tab-loopy">
+            <LoopyPanel />
           </div>
         ) : (
           <div id="panel-helper" role="tabpanel" aria-labelledby="tab-helper">
